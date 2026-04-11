@@ -1,0 +1,51 @@
+paperclip-reborn/
+│
+├── README.md                         # The Master Documentation (The First Soul)
+├── .env                              # API Keys & Config (Never tracked in Git)
+│
+├── god_process.py                    # 👑 THE WATCHDOG: Wraps the backend. Catches crashes, auto-heals framework.
+│
+├── backend_engine/                   # 🧠 THE NERVOUS SYSTEM (Python/FastAPI)
+│   ├── requirements.txt              # fastapi, uvicorn, websockets, sqlite3, pydantic, docker
+│   ├── main.py                       # FastAPI & WebSocket server
+│   │
+│   ├── database/
+│   │   ├── ledger.db                 # SQLite: Tracks 5x Jules API limits, token burn, active PRs
+│   │   └── db_manager.py             # SQLite helper functions
+│   │
+│   ├── anatomy/                      # 🧬 THE AGENT DNA
+│   │   ├── agent_core.py             # Class: Soul (Prompt), Brain (Model), Hands (Tools), Heartbeat (WebSockets)
+│   │   └── shift_manager.py          # Toggles routing between Boss Mode (Manual) and God Mode (Auto)
+│   │
+│   ├── caveman_tools/                # 🪨 THE PRIMITIVES
+│   │   ├── primitive_bash.py         # Sandboxed terminal execution (`subprocess.run`)
+│   │   ├── primitive_gh.py           # `gh` CLI wrapper (Open PRs, fetch diffs)
+│   │   ├── primitive_docker.py       # `docker` CLI wrapper (Spins up containers for testing)
+│   │   └── primitive_ollama.py       # `ollama` CLI wrapper
+│   │
+│   ├── workforce/                    # 🏢 THE TRI-TIERED ROSTER
+│   │   ├── tier1_executives/         # Premium Models (Huge Context)
+│   │   │   ├── ceo_agent.py          # Writes ARCHITECTURE.md
+│   │   │   └── god_agent.py          # Edits framework code, writes RULES.md
+│   │   │
+│   │   ├── tier2_cloud_labor/        # Free Cloud Models
+│   │   │   └── jules_router.py       # Load balances tasks across the 5x API accounts
+│   │   │
+│   │   └── tier3_local_swarm/        # Local Ollama Models (Zero Cost)
+│   │       ├── qa_agent.py           # Runs Docker tests, sends terminal logs back to Jules
+│   │       └── ops_agent.py          # Merges PRs, cleans branches
+│   │
+│   └── shared_workspace/             # 🧠 THE SHARED BRAIN (Stigmergy - Target Repo)
+│       ├── ARCHITECTURE.md           # The CEO's master plan
+│       └── RULES.md                  # The God Agent's system updates
+│
+└── visual_hq/                        # 👁️ THE VIRTUAL OFFICE (React / Frontend)
+    ├── package.json                  # react, vite, framer-motion, socket.io-client
+    ├── src/
+    │   ├── App.jsx                   # Main React layout
+    │   ├── components/
+    │   │   ├── OfficeMap.jsx         # 2D isometric render of the desks, avatars, and flying tasks
+    │   │   ├── AgentDossier.jsx      # Sidebar: Hot-swap Brains, equip Tools, view Terminal
+    │   │   └── ShiftToggle.jsx       # "Day Shift" (Boss Mode) vs "Night Shift" (God Mode) toggle
+    │   └── hooks/
+    │       └── useHeartbeat.js       # Listens to backend WebSocket for live UI updates

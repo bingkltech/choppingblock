@@ -1,0 +1,6 @@
+.env
+/visual_hq/node_modules
+/backend_engine/venv
+__pycache__
+*.pyc
+/backend_engine/database/*.db

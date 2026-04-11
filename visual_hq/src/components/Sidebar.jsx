@@ -1,0 +1,39 @@
+import { useState } from 'react';
+
+/**
+ * Sidebar — Vertical icon navigation (left sidebar from dashboard.png).
+ */
+export default function Sidebar({ activeView, setActiveView }) {
+  const items = [
+    { icon: '📊', label: 'Dashboard' },
+    { icon: '🤖', label: 'Agents' },
+    { icon: '📁', label: 'Files' },
+    { icon: '📋', label: 'Tasks' },
+    { icon: '🎯', label: 'Targets' },
+    { icon: '🔗', label: 'Connections' },
+    { icon: '⚙️', label: 'Settings' },
+  ];
+
+  return (
+    <div className="sidebar">
+      {items.map((item, i) => (
+        <button
+          key={item.label}
+          className={`sidebar-item ${activeView === item.label ? 'active' : ''}`}
+          onClick={() => setActiveView(item.label)}
+          title={item.label}
+          id={`sidebar-${item.label.toLowerCase()}`}
+        >
+          <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
+        </button>
+      ))}
+      <div className="sidebar-spacer" />
+      <button className="sidebar-item" title="Help" id="sidebar-help">
+        <span style={{ fontSize: '1.1rem' }}>❓</span>
+      </button>
+      <button className="sidebar-item" title="Logout" id="sidebar-logout">
+        <span style={{ fontSize: '1.1rem' }}>🚪</span>
+      </button>
+    </div>
+  );
+}

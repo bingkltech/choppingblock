@@ -1,0 +1,22 @@
+# ==========================================
+# 📎 Paperclip Reborn — Backend Dependencies
+# ==========================================
+
+# Core Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+pydantic>=2.9.0
+
+# Database
+# sqlite3 is built-in to Python
+
+# AI / LLM
+requests>=2.32.0
+python-dotenv>=1.0.1
+
+# Docker SDK
+docker>=7.1.0
+
+# Utilities
+rich>=13.7.0
