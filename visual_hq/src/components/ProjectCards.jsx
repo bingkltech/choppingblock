@@ -45,7 +45,7 @@ export default function ProjectCards({ projects = [] }) {
           >
             <div className="card-header">
               <div className="project-name">{project.project_name}</div>
-              <button className="card-menu">⋯</button>
+              <button className="card-menu" aria-label="Options">⋯</button>
             </div>
 
             <div className="project-status">

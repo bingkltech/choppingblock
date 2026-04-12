@@ -90,7 +90,7 @@ export default function LivePipeline({ projects = [] }) {
             <option>Build only</option>
             <option>Deploy only</option>
           </select>
-          <button className="card-menu">⋯</button>
+          <button className="card-menu" aria-label="Options">⋯</button>
         </div>
       </div>
 

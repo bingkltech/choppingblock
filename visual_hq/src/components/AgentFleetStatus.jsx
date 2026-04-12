@@ -31,7 +31,7 @@ export default function AgentFleetStatus({ fleetStats = {}, agents = [] }) {
           <span className="card-title">Agent Fleet Status</span>
           <span className="fleet-total">{stats.total_agents.toLocaleString()} Agents</span>
         </div>
-        <button className="card-menu">⋯</button>
+        <button className="card-menu" aria-label="Options">⋯</button>
       </div>
 
       {/* Subtitle */}

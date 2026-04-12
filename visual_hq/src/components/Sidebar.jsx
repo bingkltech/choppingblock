@@ -22,16 +22,17 @@ export default function Sidebar({ activeView, setActiveView }) {
           className={`sidebar-item ${activeView === item.label ? 'active' : ''}`}
           onClick={() => setActiveView(item.label)}
           title={item.label}
+          aria-label={item.label}
           id={`sidebar-${item.label.toLowerCase()}`}
         >
           <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
         </button>
       ))}
       <div className="sidebar-spacer" />
-      <button className="sidebar-item" title="Help" id="sidebar-help">
+      <button className="sidebar-item" title="Help" aria-label="Help" id="sidebar-help">
         <span style={{ fontSize: '1.1rem' }}>❓</span>
       </button>
-      <button className="sidebar-item" title="Logout" id="sidebar-logout">
+      <button className="sidebar-item" title="Logout" aria-label="Logout" id="sidebar-logout">
         <span style={{ fontSize: '1.1rem' }}>🚪</span>
       </button>
     </div>

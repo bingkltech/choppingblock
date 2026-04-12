@@ -38,7 +38,7 @@ export default function ActivityFeed({ activity = [] }) {
     >
       <div className="card-header">
         <span className="card-title">Agent Activity Feed</span>
-        <button className="card-menu">⋯</button>
+        <button className="card-menu" aria-label="Options">⋯</button>
       </div>
       <div className="activity-subtitle">Real time log</div>
 

@@ -37,7 +37,7 @@ export default function FleetUtilization({ fleetStats = {} }) {
     >
       <div className="card-header">
         <span className="card-title">Fleet Utilization</span>
-        <button className="card-menu">⋯</button>
+        <button className="card-menu" aria-label="Options">⋯</button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
