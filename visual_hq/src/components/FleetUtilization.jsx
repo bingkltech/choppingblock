@@ -1,9 +1,21 @@
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { motion } from 'framer-motion';
 
 /**
  * FleetUtilization — Utilization percentage, sparkline chart, and footer stats.
  */
+
+const CustomTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="custom-tooltip">
+        <p className="tooltip-val">{`${payload[0].value.toFixed(1)}%`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function FleetUtilization({ fleetStats = {} }) {
   const utilization = fleetStats.utilization_pct || 93;
   const totalAgents = fleetStats.total_agents || 9420;
@@ -35,23 +47,26 @@ export default function FleetUtilization({ fleetStats = {} }) {
 
       {/* Sparkline Chart */}
       <div className="utilization-chart">
-        <ResponsiveContainer width="100%" height={80}>
-          <AreaChart data={sparkData}>
+        <ResponsiveContainer width="100%" height={120}>
+          <AreaChart data={sparkData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="utilGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.4} />
-                <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.05} />
+                <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.0} />
               </linearGradient>
             </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.1)" />
             <XAxis dataKey="time" hide />
             <YAxis hide domain={[0, 100]} />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(20, 184, 166, 0.5)', strokeWidth: 1, strokeDasharray: '3 3' }} />
             <Area
               type="monotone"
               dataKey="value"
               stroke="#14b8a6"
-              strokeWidth={2}
+              strokeWidth={3}
               fill="url(#utilGradient)"
               dot={false}
+              activeDot={{ r: 5, fill: "#14b8a6", stroke: "var(--bg-card)", strokeWidth: 2 }}
               animationDuration={1500}
             />
           </AreaChart>
@@ -62,34 +77,52 @@ export default function FleetUtilization({ fleetStats = {} }) {
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
-        fontSize: '0.6rem',
+        fontSize: '0.65rem',
         color: 'var(--text-muted)',
-        padding: '0 4px',
+        padding: '8px 4px 0',
+        fontWeight: 500
       }}>
-        <span>10%</span>
+        <span>0%</span>
         <span>25%</span>
         <span>50%</span>
         <span>75%</span>
         <span>100%</span>
       </div>
 
-      {/* Footer Stats */}
-      <div className="utilization-footer">
-        <div className="utilization-stat">
-          <div className="utilization-stat-label">Active Agents</div>
-          <div className="utilization-stat-value">{active.toLocaleString()}/{totalAgents.toLocaleString()}</div>
+      {/* Footer Stats Grid */}
+      <div className="utilization-metrics-grid">
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-label">Active Agents</span>
+          </div>
+          <div className="metric-value">{active.toLocaleString()}<span className="metric-sub"> / {totalAgents.toLocaleString()}</span></div>
         </div>
-        <div className="utilization-stat">
-          <div className="utilization-stat-label">Idle</div>
-          <div className="utilization-stat-value">{idle.toLocaleString()}</div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-label">Idle</span>
+          </div>
+          <div className="metric-value">{idle.toLocaleString()}</div>
         </div>
-        <div className="utilization-stat">
-          <div className="utilization-stat-label">CPU</div>
-          <div className="utilization-stat-value">78%</div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-label">CPU Usage</span>
+            <span className="metric-value-small">78%</span>
+          </div>
+          <div className="progress-bar-bg">
+            <div className="progress-bar-fill warning" style={{ width: '78%' }}></div>
+          </div>
         </div>
-        <div className="utilization-stat">
-          <div className="utilization-stat-label">Memory</div>
-          <div className="utilization-stat-value">62%</div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span className="metric-label">Memory</span>
+            <span className="metric-value-small">62%</span>
+          </div>
+          <div className="progress-bar-bg">
+            <div className="progress-bar-fill active" style={{ width: '62%' }}></div>
+          </div>
         </div>
       </div>
     </motion.div>
