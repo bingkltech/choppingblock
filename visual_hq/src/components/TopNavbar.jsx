@@ -31,7 +31,7 @@ export default function TopNavbar({ shift, onToggleShift }) {
 
       <nav className="topbar-nav">
         {tabs.map(tab => (
-          <button
+          <button aria-label={tab.label}
             key={tab.id}
             id={`nav-${tab.id}`}
             className={`topbar-nav-item ${activeTab === tab.id ? 'active' : ''}`}

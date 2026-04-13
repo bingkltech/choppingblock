@@ -383,7 +383,7 @@ export default function JulesDispatchPanel({ apiUsage = [] }) {
                   <span className="jules-count-badge">{activeSessions.length}</span>
                 )}
               </span>
-              <button className="jules-refresh-btn" onClick={fetchSessions} title="Refresh">
+              <button className="jules-refresh-btn" onClick={fetchSessions} title="Refresh" aria-label="Refresh sessions">
                 🔄
               </button>
             </div>
