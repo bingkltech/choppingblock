@@ -48,139 +48,24 @@ If you cannot determine a fix, output:
 
 
 # ==========================================
-# OLLAMA HTTP API (more reliable than CLI piping)
+# 🧠 BRAIN DISPATCHER (shared module)
 # ==========================================
 from config import OLLAMA_URL, OLLAMA_TIMEOUT as GOD_TIMEOUT, DEFAULT_OLLAMA_MODEL
+from anatomy.brain_dispatcher import query_ollama, query_gemini, query_brain, extract_json
 
 
+# Backward-compatible wrappers with GOD_SOUL defaults
 def _query_ollama(prompt: str, system: str = GOD_SOUL, model: str = "qwen3.5:9b") -> Optional[str]:
-    """
-    Query local Ollama via HTTP API. Returns the model's text response.
-    Uses streaming to collect the full response.
-    """
-    try:
-        resp = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": model,
-                "prompt": prompt,
-                "system": system,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,   # Low temp for precise code fixes
-                    "num_predict": 1024,    # Enough for a patch but not a novel
-                },
-            },
-            timeout=GOD_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("response", "")
-    except requests.exceptions.ConnectionError:
-        logger.error("GOD AGENT: Ollama not reachable at %s", OLLAMA_URL)
-        return None
-    except requests.exceptions.Timeout:
-        logger.error("GOD AGENT: Ollama timed out after %ds", GOD_TIMEOUT)
-        return None
-    except Exception as e:
-        logger.error("GOD AGENT: Ollama query failed: %s", str(e))
-        return None
-
+    return query_ollama(prompt, system, model, GOD_TIMEOUT)
 
 def _extract_json(text: str) -> Optional[dict]:
-    """Extract a JSON object from LLM response (handles markdown fences, thinking tags, etc)."""
-    if not text:
-        return None
-
-    # Strip <think>...</think> blocks (qwen3.5 does this)
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-
-    # Try direct parse first
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Try to find JSON within markdown fences
-    match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # Try to find any JSON object
-    match = re.search(r'\{[^{}]*"root_cause"[^{}]*\}', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
-
-    # Last resort — find anything between { and }
-    start = text.find('{')
-    end = text.rfind('}')
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    return None
-
+    return extract_json(text)
 
 def _query_gemini(prompt: str, system: str = GOD_SOUL, model: str = "gemini-2.5-flash", api_key: str = "") -> Optional[str]:
-    """
-    Query Google Gemini via REST API. Returns the model's text response.
-    """
-    if not api_key:
-        # Try to read from environment
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-    if not api_key:
-        logger.error("GOD AGENT: No Gemini API key configured")
-        return None
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    try:
-        resp = requests.post(
-            url,
-            json={
-                "system_instruction": {"parts": [{"text": system}]},
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
-            },
-            timeout=GOD_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    except requests.exceptions.ConnectionError:
-        logger.error("GOD AGENT: Gemini API unreachable")
-        return None
-    except requests.exceptions.Timeout:
-        logger.error("GOD AGENT: Gemini API timed out after %ds", GOD_TIMEOUT)
-        return None
-    except Exception as e:
-        logger.error("GOD AGENT: Gemini query failed: %s", str(e))
-        return None
-
+    return query_gemini(prompt, system, model, api_key, GOD_TIMEOUT)
 
 def _query_brain(prompt: str, system: str = GOD_SOUL, model: str = "qwen3.5:9b", api_key: str = "") -> Optional[str]:
-    """
-    Dispatcher: routes to the correct provider based on model name prefix.
-    """
-    if model.startswith("gemini-"):
-        return _query_gemini(prompt, system, model, api_key)
-    elif model.startswith("claude-"):
-        logger.warning("GOD AGENT: Claude provider not yet supported — falling back to Ollama")
-        return _query_ollama(prompt, system, "qwen3.5:9b")
-    elif model == "ollama:default":
-        # Use whatever Ollama has loaded — default to qwen3.5:9b
-        return _query_ollama(prompt, system, "qwen3.5:9b")
-    else:
-        # Assume it's an Ollama model name
-        return _query_ollama(prompt, system, model)
+    return query_brain(prompt, system, model, api_key, GOD_TIMEOUT)
 
 
 # ==========================================
@@ -315,8 +200,16 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
     def apply_patch(self, analysis: dict) -> bool:
         """
         Apply the God Agent's recommended patch to the offending file.
-        Returns True if the patch was applied successfully.
+        Safety protocol:
+            1. Git stash current state as a backup
+            2. Apply the patch
+            3. Validate with py_compile
+            4. If compile fails → git checkout to rollback
+        Returns True if the patch was applied and validated successfully.
         """
+        import subprocess
+        import py_compile
+
         file_path = analysis.get("file")
         old_code = analysis.get("old_code")
         new_code = analysis.get("new_code")
@@ -326,8 +219,8 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
             return False
 
         # Resolve the file path relative to the project root
+        project_root = os.path.join(os.path.dirname(__file__), "..", "..")
         if not os.path.isabs(file_path):
-            project_root = os.path.join(os.path.dirname(__file__), "..", "..")
             file_path = os.path.join(project_root, file_path)
             file_path = os.path.normpath(file_path)
 
@@ -336,6 +229,17 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
             return False
 
         self._set_state("HEALING", f"Patching {os.path.basename(file_path)}")
+
+        # ── SAFETY: Stash current state ──
+        stash_label = f"pre-heal-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        try:
+            subprocess.run(
+                ["git", "stash", "push", "-m", stash_label, "--", file_path],
+                cwd=project_root, capture_output=True, text=True, timeout=10,
+            )
+            logger.info("GOD AGENT: Stashed backup: %s", stash_label)
+        except Exception as e:
+            logger.warning("GOD AGENT: Git stash failed (continuing anyway): %s", e)
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -348,6 +252,8 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
                 if old_normalized not in normalized:
                     logger.error("GOD AGENT: Patch target not found in %s", file_path)
                     self._set_state("ERROR", "Patch target not found")
+                    # Restore from stash
+                    self._restore_stash(project_root)
                     return False
                 content = normalized
                 old_code = old_normalized
@@ -357,14 +263,56 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(patched)
 
+            # ── SAFETY: Validate with py_compile ──
+            if file_path.endswith(".py"):
+                try:
+                    py_compile.compile(file_path, doraise=True)
+                    logger.info("GOD AGENT: py_compile validation PASSED: %s", file_path)
+                except py_compile.PyCompileError as ce:
+                    logger.error("GOD AGENT: py_compile FAILED — rolling back: %s", ce)
+                    self._set_state("ERROR", f"Patch broke syntax: {ce}")
+                    # Rollback: restore original content
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    logger.info("GOD AGENT: Rollback complete — file restored")
+                    return False
+
             logger.info("GOD AGENT: Successfully patched: %s", file_path)
             self._set_state("SUCCESS", f"Patched {os.path.basename(file_path)}")
+            # Drop the stash since patch succeeded
+            self._drop_stash(project_root, stash_label)
             return True
 
         except Exception as e:
             logger.error("GOD AGENT: Patch failed: %s", str(e))
             self._set_state("ERROR", f"Patch failed: {str(e)}")
+            # Try to restore from stash
+            self._restore_stash(project_root)
             return False
+
+    def _restore_stash(self, project_root: str) -> None:
+        """Attempt to restore the most recent git stash."""
+        import subprocess
+        try:
+            subprocess.run(
+                ["git", "stash", "pop"],
+                cwd=project_root, capture_output=True, text=True, timeout=10,
+            )
+            logger.info("GOD AGENT: Stash restored (rollback)")
+        except Exception as e:
+            logger.warning("GOD AGENT: Stash restore failed: %s", e)
+
+    def _drop_stash(self, project_root: str, label: str) -> None:
+        """Drop a stash entry after successful patch."""
+        import subprocess
+        try:
+            subprocess.run(
+                ["git", "stash", "drop"],
+                cwd=project_root, capture_output=True, text=True, timeout=10,
+            )
+            logger.info("GOD AGENT: Stash dropped (patch verified): %s", label)
+        except Exception:
+            pass  # Non-critical
 
     # ------------------------------------------
     # CORE: Write a new RULE to RULES.md

@@ -52,9 +52,10 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "ledger.db")
 
 def get_connection() -> sqlite3.Connection:
     """Returns a connection to the ledger database with row factory enabled."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -760,17 +761,19 @@ def create_task(task_id: str, task_type: str, description: str,
                 priority: int = 5, input_data: str = '{}') -> dict:
     """Create a new task in the queue. Returns the created task."""
     conn = get_connection()
-    now = datetime.now().isoformat()
-    conn.execute(
-        """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (task_id, task_type, description, priority, input_data, now)
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
-    conn.close()
-    logger.info("📋 Task created: %s [%s] priority=%d", task_id, task_type, priority)
-    return dict(row) if row else {}
+    try:
+        now = datetime.now().isoformat()
+        conn.execute(
+            """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (task_id, task_type, description, priority, input_data, now)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
+        logger.info("📋 Task created: %s [%s] priority=%d", task_id, task_type, priority)
+        return dict(row) if row else {}
+    finally:
+        conn.close()
 
 
 def claim_task(task_id: str, agent_id: str) -> bool:
