@@ -226,8 +226,8 @@ async def root():
 
 @app.get("/api/agents")
 async def api_get_agents():
-    """Returns all active (non-terminated) agents."""
-    agents = get_all_agents(include_terminated=False)
+    """Returns all agents (no hiding)."""
+    agents = get_all_agents(include_terminated=True)
     # Normalize field names for the frontend
     normalized = []
     for a in agents:

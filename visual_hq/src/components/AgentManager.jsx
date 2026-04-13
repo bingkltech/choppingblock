@@ -532,7 +532,6 @@ const AgentManager = ({ apiUsage = [] }) => {
   const [editingAgent, setEditingAgent] = useState(null);
   const dragControls = useDragControls();
   const [form, setForm] = useState(BLANK_FORM);
-  const [filterText, setFilterText] = useState('');
   const [skillFetch, setSkillFetch] = useState({ source: '', loading: false, error: null });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -714,12 +713,7 @@ const AgentManager = ({ apiUsage = [] }) => {
     return [...system, ...others];
   })();
 
-  const displayed = normalizedAgents.filter(a =>
-    !filterText || 
-    (a.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
-    (a.role || '').toLowerCase().includes(filterText.toLowerCase()) ||
-    (a.agent_id || '').toLowerCase().includes(filterText.toLowerCase())
-  );
+  const displayed = normalizedAgents;
 
   // Count ready tools in form for submit label
   const readyToolCount = ALL_TOOL_IDS.filter(id => toolStatus(id, form.toolconfigs) === 'ready').length;
@@ -736,12 +730,6 @@ const AgentManager = ({ apiUsage = [] }) => {
           </p>
         </div>
         <div className="am-header-actions">
-          <input
-            className="am-search"
-            placeholder="🔍 Search agents..."
-            value={filterText}
-            onChange={e => setFilterText(e.target.value)}
-          />
           <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>
         </div>
       </header>
