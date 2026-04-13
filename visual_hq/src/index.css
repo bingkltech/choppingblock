@@ -1302,6 +1302,7 @@ body::before {
   margin-bottom: 8px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -2149,6 +2150,52 @@ body::before {
   cursor: default;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* ── System Agent (God / CEO) special styling ── */
+.dossier-system {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.85), rgba(30, 22, 10, 0.65));
+}
+.dossier-system:hover {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow: var(--shadow-card), 0 0 24px rgba(245, 158, 11, 0.12);
+}
+
+.dossier-system-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: linear-gradient(90deg, #f59e0b, #f97316, #ef4444);
+  animation: system-bar-shimmer 3s ease-in-out infinite;
+}
+@keyframes system-bar-shimmer {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+.dossier-avatar-system {
+  background: linear-gradient(135deg, #f59e0b, #f97316) !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+  font-size: 1.2rem;
+}
+
+.dossier-system-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(249, 115, 22, 0.2));
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 4px;
+  vertical-align: middle;
 }
 
 /* ════════════════════════════════════════════

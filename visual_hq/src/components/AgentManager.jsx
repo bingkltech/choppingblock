@@ -98,27 +98,76 @@ const STATUS_COLORS = { ready: '#10b981', partial: '#f59e0b', unconfigured: '#4b
 const STATUS_LABELS = { ready: '✓ Connected', partial: '⚠ Incomplete', unconfigured: '○ Not configured' };
 
 // ─────────────────────────────────────────────
+// SYSTEM AGENTS — permanently embedded, always visible
+// ─────────────────────────────────────────────
+const SYSTEM_AGENTS = [
+  {
+    agent_id: 'god',
+    agent_name: 'God Agent',
+    tier: 'tier1',
+    brain_model: 'gemini-2.5-pro',
+    role: 'System Overseer',
+    custom_skills: 'System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect',
+    equipped_tools: ['bash', 'github', 'jules', 'browser', 'docker', 'antigravity'],
+    toolconfigs: {},
+    state: 'IDLE',
+    is_system: true,
+  },
+  {
+    agent_id: 'ceo',
+    agent_name: 'CEO Agent',
+    tier: 'tier1',
+    brain_model: 'claude-sonnet-4-20250514',
+    role: 'CEO / Executive Director',
+    custom_skills: 'Strategic Planning, Delegation, Executive Oversight, Architecture Design',
+    equipped_tools: ['bash', 'github'],
+    toolconfigs: {},
+    state: 'IDLE',
+    is_system: true,
+  },
+];
+
+// ─────────────────────────────────────────────
 // MODEL / TIER OPTIONS
 // ─────────────────────────────────────────────
 const MODEL_OPTIONS = [
   {
-    group: 'Ollama — Local (Free)',
+    group: '🟢 Ollama — Local (Free, Offline)',
     models: [
-      { value: 'ollama:qwen2.5-coder', label: 'Qwen2.5-Coder (7B)' },
-      { value: 'ollama:llama3',        label: 'Llama 3 (8B)' },
-      { value: 'ollama:phi3',          label: 'Phi-3 Mini (3.8B)' },
-      { value: 'ollama:mistral',       label: 'Mistral (7B)' },
-      { value: 'ollama:gemma2',        label: 'Gemma 2 (9B)' },
-      { value: 'ollama:deepseek-coder',label: 'DeepSeek Coder (6.7B)' },
+      { value: 'qwen3.5:4b',         label: 'Qwen 3.5 (4B) — fast, lightweight' },
+      { value: 'qwen3.5:9b',         label: 'Qwen 3.5 (9B) — balanced' },
+      { value: 'gemma4:latest',       label: 'Gemma 4 (14B) — Google local' },
+      { value: 'gemma4:31b',          label: 'Gemma 4 (31B) — heavyweight' },
+      { value: 'gemma3:27b',          label: 'Gemma 3 (27B) — previous gen' },
+      { value: 'mistral:latest',      label: 'Mistral (7B) — solid coder' },
+      { value: 'llama3:latest',       label: 'Llama 3 (8B) — Meta' },
+      { value: 'llama3.1:latest',     label: 'Llama 3.1 (8B) — Meta latest' },
+      { value: 'gpt-oss:20b',        label: 'GPT-OSS (20B) — open-source GPT' },
+      { value: 'gpt-oss:120b',       label: 'GPT-OSS (120B) — massive local' },
     ],
   },
   {
-    group: 'Cloud — API Key Required',
+    group: '🔵 Ollama — Cloud (Free with Limits)',
     models: [
-      { value: 'gemini-1.5-pro',       label: 'Google: Gemini 1.5 Pro' },
-      { value: 'gemini-2.0-flash',     label: 'Google: Gemini 2.0 Flash (Free tier)' },
-      { value: 'gpt-4o',              label: 'OpenAI: GPT-4o' },
-      { value: 'claude-3.5-sonnet',    label: 'Anthropic: Claude 3.5 Sonnet' },
+      { value: 'minimax-m2:cloud',       label: 'MiniMax M2 — cloud inference' },
+      { value: 'glm-5:cloud',            label: 'GLM-5 — cloud inference' },
+      { value: 'kimi-k2.5:cloud',        label: 'Kimi K2.5 — cloud inference' },
+      { value: 'qwen3-coder:480b-cloud', label: 'Qwen3-Coder (480B) — cloud monster' },
+      { value: 'gpt-oss:120b-cloud',     label: 'GPT-OSS (120B) — cloud variant' },
+    ],
+  },
+  {
+    group: '💎 Paid — API Key Required',
+    models: [
+      { value: 'gemini-2.5-pro',          label: 'Google: Gemini 2.5 Pro' },
+      { value: 'gemini-2.5-flash',        label: 'Google: Gemini 2.5 Flash' },
+      { value: 'gemini-2.0-flash',        label: 'Google: Gemini 2.0 Flash' },
+      { value: 'claude-sonnet-4-20250514', label: 'Anthropic: Claude Sonnet 4' },
+      { value: 'claude-3.5-sonnet',       label: 'Anthropic: Claude 3.5 Sonnet' },
+      { value: 'claude-opus-4-20250514',  label: 'Anthropic: Claude Opus 4' },
+      { value: 'gpt-4o',                  label: 'OpenAI: GPT-4o' },
+      { value: 'gpt-4.1',                 label: 'OpenAI: GPT-4.1' },
+      { value: 'o3',                      label: 'OpenAI: o3 (reasoning)' },
     ],
   },
 ];
@@ -131,7 +180,7 @@ const TIER_OPTIONS = [
 
 const BLANK_FORM = {
   name: '', role: '', tier: 'tier3',
-  brain_provider: 'ollama:qwen2.5-coder', brain_api_key: '', mcp_endpoints: '',
+  brain_provider: 'qwen3.5:9b', brain_api_key: '', mcp_endpoints: '',
   skills: '',
   toolconfigs: {},   // { [toolId]: { field_key: value, ... } }
 };
@@ -172,249 +221,10 @@ const WhatsAppQRPanel = ({ onScanned }) => {
               Waiting for scan...
             </div>
           </div>
-<<<<<<< HEAD
           <button type="button" className="tool-qr-confirm-btn" onClick={handleSimulateScан}>
             ✅ I've scanned the code
           </button>
         </>
-=======
-
-          <AnimatePresence>
-            {showHireModal && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0, scale: 0.98 }}
-                animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                exit={{ opacity: 0, height: 0, scale: 0.98 }}
-                className="agent-hire-modal"
-              >
-                <div className="agent-hire-icon">📝</div>
-                <h3 className="agent-hire-title">
-                  <span className="agent-hire-badge">Recruitment Form</span>
-                  Define Agent Capabilities
-                </h3>
-
-                <form onSubmit={handleHireAgent} className="agent-hire-form relative z-10">
-                  <div className="agent-hire-col">
-                    <div>
-                      <label className="jules-form-label">Agent Name (e.g. Alice, Hermes)</label>
-                      <input required type="text" placeholder="Worker Name" value={newAgent.name} onChange={(e) => setNewAgent({...newAgent, name: e.target.value})} className="jules-input" />
-                    </div>
-                    <div>
-                      <label className="jules-form-label">Role Description</label>
-                      <input required type="text" placeholder="React & UI/UX Expert" value={newAgent.role} onChange={(e) => setNewAgent({...newAgent, role: e.target.value})} className="jules-input" />
-                    </div>
-                    <div>
-                      <label className="jules-form-label">Capacities & Skills</label>
-                      <textarea required placeholder="Tailwind CSS, React Hooks, UI Animations, Microinteractions..." value={newAgent.skills} onChange={(e) => setNewAgent({...newAgent, skills: e.target.value})} className="jules-input" rows={3}></textarea>
-                    </div>
-                  </div>
-
-                  <div className="agent-hire-col">
-                    <div className="jules-form-row">
-                      <div className="jules-form-half">
-                        <label className="jules-form-label">Permission Tier</label>
-                        <select value={newAgent.tier} onChange={(e) => setNewAgent({...newAgent, tier: e.target.value})} className="jules-input">
-                          <option>Tier 1 (Executive Override)</option>
-                          <option>Tier 2 (Cloud Operations)</option>
-                          <option>Tier 3 (Local Swarm)</option>
-                        </select>
-                      </div>
-                      <div className="jules-form-half">
-                        <label className="jules-form-label">Model Provider</label>
-                        <select value={newAgent.model} onChange={(e) => setNewAgent({...newAgent, model: e.target.value})} className="jules-input">
-                          <option value="gpt-4o">GPT-4o</option>
-                          <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                          <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                          <option value="qwen2.5-coder">Qwen2.5-Coder (Local)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="jules-form-label" style={{ marginBottom: '8px' }}>Equip Caveman Primitives (Tools)</label>
-                      <div className="agent-tool-grid">
-                        <label className={`agent-tool-option ${newAgent.tools.jules ? "active jules" : ""}`}>
-                          <input type="checkbox" checked={newAgent.tools.jules} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, jules: e.target.checked}})} className="hidden" />
-                          <span className="text-xl">🔮</span>
-                          <span className="agent-tool-label">Jules.Google API</span>
-                        </label>
-                        <label className={`agent-tool-option ${newAgent.tools.github ? "active github" : ""}`}>
-                          <input type="checkbox" checked={newAgent.tools.github} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, github: e.target.checked}})} className="hidden" />
-                          <span className="text-xl">🐙</span>
-                          <span className="agent-tool-label">GitHub CLI (PRs)</span>
-                        </label>
-                        <label className={`agent-tool-option ${newAgent.tools.bash ? "active bash" : ""}`}>
-                          <input type="checkbox" checked={newAgent.tools.bash} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, bash: e.target.checked}})} className="hidden" />
-                          <span className="text-xl">⌨️</span>
-                          <span className="agent-tool-label">Bash Terminal</span>
-                        </label>
-                        <label className={`agent-tool-option ${newAgent.tools.docker ? "active docker" : ""}`}>
-                          <input type="checkbox" checked={newAgent.tools.docker} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, docker: e.target.checked}})} className="hidden" />
-                          <span className="text-xl">🐳</span>
-                          <span className="agent-tool-label">Docker Sandbox</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <button type="submit" className="jules-dispatch-btn" style={{ marginTop: '16px', width: '100%' }}>
-                      + Finalize Recruitment & Mount Agent
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Render Active Agents */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {currentAgents.map((agent, i) => {
-              const isEditing = editingAgent?.id === agent.id;
-              
-              if (isEditing) {
-                return (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    key={agent.id} 
-                    className="agent-edit-modal"
-                  >
-                    <div className="flex justify-between items-center mb-4 border-b border-neutral-700 pb-2">
-                      <h3 className="agent-hire-title" style={{ fontSize: '1rem', margin: 0 }}>Edit System Configuration</h3>
-                      <button onClick={() => setEditingAgent(null)} className="text-neutral-400 hover:text-white" aria-label="Close edit modal">✕</button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Agent Name</label>
-                          <input type="text" value={editingAgent.name} onChange={e => setEditingAgent({...editingAgent, name: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
-                        </div>
-                        <div>
-                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Role Description</label>
-                          <input type="text" value={editingAgent.role} onChange={e => setEditingAgent({...editingAgent, role: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Model Provider</label>
-                          <select value={editingAgent.model} onChange={e => setEditingAgent({...editingAgent, model: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }}>
-                            <option value="gpt-4o">gpt-4o</option>
-                            <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
-                            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                            <option value="qwen2.5-coder">qwen2.5-coder</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Capacities & Skills</label>
-                          <input type="text" value={editingAgent.custom_skills} onChange={e => setEditingAgent({...editingAgent, custom_skills: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Equipped Tool Primitives</label>
-                        <div className="flex gap-4">
-                          {['jules', 'github', 'bash', 'docker'].map(tool => (
-                            <label key={tool} className="flex items-center gap-2 text-xs text-white bg-neutral-900 p-2 rounded border border-neutral-700 cursor-pointer hover:border-neutral-500">
-                              <input 
-                                type="checkbox" 
-                                checked={editingAgent.custom_tools.includes(tool)}
-                                onChange={e => {
-                                  const newTools = e.target.checked 
-                                    ? [...editingAgent.custom_tools, tool]
-                                    : editingAgent.custom_tools.filter(t => t !== tool);
-                                  setEditingAgent({...editingAgent, custom_tools: newTools});
-                                }}
-                              />
-                              {tool === 'jules' ? '🔮' : tool === 'github' ? '🐙' : tool === 'docker' ? '🐳' : '⌨️'} {tool}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex gap-4 mt-6">
-                        <button onClick={handleSaveEdit} className="jules-dispatch-btn">
-                          💾 Save Configurations
-                        </button>
-                        <button onClick={() => setEditingAgent(null)} className="jules-action-btn" style={{ padding: '10px', width: '100%', fontSize: '0.9rem', background: 'var(--bg-card)' }}>
-                          ❌ Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
-
-              return (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                key={agent.id} 
-                className="agent-card group"
-              >
-                <button 
-                  onClick={() => setEditingAgent(agent)}
-                  className="agent-edit-btn opacity-0 group-hover:opacity-100"
-                >
-                  ⚙️ Edit Profile
-                </button>
-
-                <div className="flex-1 pt-2">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h2 className="agent-card-name">{agent.name}</h2>
-                      <span className="agent-card-role">{agent.role}</span>
-                    </div>
-                    <div className="flex gap-2 items-center lg:pr-20">
-                      <span className="agent-status-label">{agent.status}</span>
-                      <div className={`agent-status-dot ${agent.status === "Alive" ? "alive" : "dead"}`}></div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Assigned Brain (Model)</label>
-                    <div className="jules-input" style={{ padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer' }} onClick={() => setEditingAgent(agent)}>
-                      {agent.model}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Intrinsic Skills</label>
-                    <p className="agent-card-skills">
-                      {agent.custom_skills}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="agent-card-divider hidden md:block"></div>
-
-                <div className="flex-1 flex flex-col justify-between pt-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 mb-2 uppercase tracking-wide">Equipped Primtives (Tools)</label>
-                    <div className="flex flex-wrap gap-2">
-                      {agent.custom_tools.map(tool => (
-                        <span key={tool} className={`agent-tool-badge ${tool}`}
-                        >
-                          {tool === 'jules' ? '🔮 Jules AI' : tool === 'github' ? '🐙 GitHub' : tool === 'docker' ? '🐳 Docker' : '⌨️ Bash'}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => toggleAgent(agent.id)}
-                    className={`agent-action-btn ${agent.status === "Alive" ? "suspend" : "provision"}`}
-                  >
-                    {agent.status === 'Alive' ? 'Suspend Instance' : 'Provision & Wake Up'}
-                  </button>
-                </div>
-              </motion.div>
-            )})}
-          </div>
-
-        </div>
->>>>>>> 9d50f5eef049fe40c4baf5c3ed24fccccf297477
       )}
     </div>
   );
@@ -550,12 +360,14 @@ const SmartToolGrid = ({ toolconfigs, onChange }) => {
 const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
   const toolconfigs = agent.toolconfigs || {};
   const isAlive = agent.status === 'Alive';
+  const isSystem = agent.is_system || ['god', 'ceo'].includes(agent.agent_id);
+  const equippedArray = Array.isArray(agent.equipped_tools) ? agent.equipped_tools : [];
 
-  // Build list of tools with their status
+  // Build list of tools: from toolconfigs status OR from equipped_tools array
   const equippedTools = ALL_TOOL_IDS.filter(id => {
     const cfg = toolconfigs[id] || {};
     const st = toolStatus(id, toolconfigs);
-    return Object.keys(cfg).length > 0 || st === 'ready';
+    return Object.keys(cfg).length > 0 || st === 'ready' || equippedArray.includes(id);
   });
 
   return (
@@ -563,13 +375,21 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className="dossier-card"
+      className={`dossier-card ${isSystem ? 'dossier-system' : ''}`}
     >
+      {/* System agent crown accent bar */}
+      {isSystem && <div className="dossier-system-bar" />}
+
       {/* ── Header ── */}
       <div className="dossier-header">
-        <div className="dossier-avatar">{agent.name?.charAt(0)?.toUpperCase() || '?'}</div>
+        <div className={`dossier-avatar ${isSystem ? 'dossier-avatar-system' : ''}`}>
+          {agent.agent_id === 'god' ? '👑' : agent.agent_id === 'ceo' ? '🏛️' : agent.name?.charAt(0)?.toUpperCase() || '?'}
+        </div>
         <div className="dossier-identity">
-          <h2 className="dossier-name">{agent.name}</h2>
+          <h2 className="dossier-name">
+            {agent.name}
+            {isSystem && <span className="dossier-system-badge">SYSTEM</span>}
+          </h2>
           <span className="dossier-role">{agent.role || 'Unassigned Role'}</span>
         </div>
         <div className="dossier-status-pill">
@@ -599,15 +419,20 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
             const st = toolStatus(id, toolconfigs);
             const cfg = toolconfigs[id] || {};
             const hasAnything = Object.keys(cfg).length > 0;
-            if (!hasAnything && st !== 'ready') return null;
+            const inEquipped = equippedArray.includes(id);
+            // If agent has an explicit equipped_tools list, only show tools in it
+            if (equippedArray.length > 0 && !inEquipped) return null;
+            if (equippedArray.length === 0 && !hasAnything && st !== 'ready') return null;
+            // For system agents with equipped_tools but no toolconfigs, show as "ready"
+            const displayStatus = inEquipped && st === 'unconfigured' ? 'ready' : st;
             return (
               <span
                 key={id}
-                className={`hand-badge status-${st}`}
-                title={STATUS_LABELS[st]}
+                className={`hand-badge status-${displayStatus}`}
+                title={STATUS_LABELS[displayStatus]}
               >
                 {def.emoji} {def.label}
-                <span className="hand-badge-dot" style={{ background: STATUS_COLORS[st] }} />
+                <span className="hand-badge-dot" style={{ background: STATUS_COLORS[displayStatus] }} />
               </span>
             );
           })}
@@ -618,7 +443,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       {/* ── Footer ── */}
       <div className="dossier-footer">
         <button className="dossier-edit-btn" onClick={() => onEdit(agent)}>⚙️ Configure</button>
-        {['god', 'ceo'].includes(agent.agent_id) ? (
+        {isSystem ? (
           <div className="dossier-protected-badge" title="This is a system-critical agent and cannot be terminated.">
             🛡️ Protected Agent
           </div>
@@ -784,15 +609,44 @@ const AgentManager = ({ apiUsage = [] }) => {
     } catch (e) { console.error('Terminate failed:', e); }
   };
 
-  const normalizedAgents = agents.map(a => ({
-    ...a,
-    id: a.agent_id || a.id,
-    name: a.agent_name || a.name,
-    status: a.state === 'IDLE' ? 'Alive' : a.state || a.status, // Map IDLE to 'Alive' for UI dot
-    model: a.brain_model || a.model,
-    custom_skills: a.custom_skills || (a.role?.includes('QA') ? 'Testing, Code Review, Linting' : 'Full-Stack Development, API Integration'),
-    toolconfigs: a.toolconfigs || {},
-  }));
+  // Merge permanent system agents with backend-fetched agents.
+  // System agents always appear, with DB overrides merged on top.
+  const normalizedAgents = (() => {
+    const backendMap = {};
+    agents.forEach(a => { backendMap[a.agent_id || a.id] = a; });
+
+    // 1. System agents first (always present, merged with any DB data)
+    const system = SYSTEM_AGENTS.map(sa => {
+      const db = backendMap[sa.agent_id] || {};
+      const merged = { ...sa, ...db };
+      return {
+        ...merged,
+        id: merged.agent_id,
+        name: merged.agent_name || sa.agent_name,
+        status: (merged.state === 'IDLE' || !merged.state) ? 'Alive' : merged.state,
+        model: merged.brain_model || sa.brain_model,
+        custom_skills: merged.custom_skills || sa.custom_skills,
+        toolconfigs: merged.toolconfigs || sa.toolconfigs || {},
+        is_system: true,
+      };
+    });
+
+    // 2. Non-system agents from backend (exclude IDs already covered)
+    const systemIds = new Set(SYSTEM_AGENTS.map(s => s.agent_id));
+    const others = agents
+      .filter(a => !systemIds.has(a.agent_id || a.id))
+      .map(a => ({
+        ...a,
+        id: a.agent_id || a.id,
+        name: a.agent_name || a.name,
+        status: a.state === 'IDLE' ? 'Alive' : a.state || a.status,
+        model: a.brain_model || a.model,
+        custom_skills: a.custom_skills || (a.role?.includes('QA') ? 'Testing, Code Review, Linting' : 'Full-Stack Development, API Integration'),
+        toolconfigs: a.toolconfigs || {},
+      }));
+
+    return [...system, ...others];
+  })();
 
   const displayed = normalizedAgents.filter(a =>
     !filterText || 

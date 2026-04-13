@@ -1,0 +1,8 @@
+CRASH AT: 2026-04-13T18:11:00.198879
+============================================================
+Traceback (most recent call last):
+  File "F:\012A_Github\choppingblock\backend_engine\main.py", line 33, in <module>
+    from routers import admin_router
+  File "F:\012A_Github\choppingblock\backend_engine\routers\admin_router.py", line 3, in <module>
+    from backend_engine.database import db_manager
+ModuleNotFoundError: No module named 'backend_engine'

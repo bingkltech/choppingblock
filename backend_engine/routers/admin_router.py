@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from backend_engine.database import db_manager
+from database import db_manager
 import logging
 
 logger = logging.getLogger(__name__)

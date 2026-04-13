@@ -40,7 +40,7 @@ class OpsAgent(BaseAgent):
 
     def merge_pr(self, pr_number: int, repo_path: str) -> dict:
         """Merge a QA-approved PR and clean up the branch."""
-        from ..caveman_tools.primitive_gh import merge_pr
+        from ...caveman_tools.primitive_gh import merge_pr
 
         self.set_state(AgentState.PUSHING, f"Merging PR #{pr_number}")
 
@@ -57,7 +57,7 @@ class OpsAgent(BaseAgent):
 
     def clean_stale_branches(self, repo_path: str) -> list[str]:
         """Delete branches with no recent activity."""
-        from ..caveman_tools.primitive_bash import run_bash
+        from ...caveman_tools.primitive_bash import run_bash
 
         self.set_state(AgentState.TESTING, "Scanning for stale branches")
 
@@ -70,7 +70,7 @@ class OpsAgent(BaseAgent):
             for branch in branches:
                 if branch.startswith("*"):
                     continue
-                from ..caveman_tools.primitive_gh import delete_branch
+                from ...caveman_tools.primitive_gh import delete_branch
                 delete_branch(branch, cwd=repo_path)
                 cleaned.append(branch)
                 logger.info("🔧 Ops: Cleaned branch: %s", branch)
