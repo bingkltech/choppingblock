@@ -1,15 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from backend_engine.database import db_manager
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
-
-AGENTS_DB = {
-    "ceo": {"id": "ceo", "name": "CEO", "role": "Chief Executive Officer", "status": "Offline", "model": "gpt-4o"},
-    "god_agent": {"id": "god_agent", "name": "God Agent", "role": "System Overseer", "status": "Offline", "model": "gpt-4o"},
-    "antigravity": {"id": "antigravity", "name": "Antigravity", "role": "Lead Cloud Developer", "status": "Offline", "model": "gemini-1.5-pro"},
-    "qa_reviewer": {"id": "qa_reviewer", "name": "QA Reviewer", "role": "Code Quality Assurance", "status": "Offline", "model": "llama3:8b"},
-    "ops_master": {"id": "ops_master", "name": "Ops Master", "role": "Operations & Deployment", "status": "Offline", "model": "qwen2.5-coder"}
-}
 
 class ModelConfig(BaseModel):
     model: str
@@ -26,41 +21,62 @@ class UpdateAgentRequest(BaseModel):
 
 @router.get("/api/agents")
 async def get_agents():
-    return {"agents": list(AGENTS_DB.values())}
+    return {"agents": db_manager.get_all_agents()}
 
 @router.post("/api/agents/{agent_id}/toggle")
 async def toggle_agent(agent_id: str):
-    if agent_id not in AGENTS_DB:
+    agent = db_manager.get_agent(agent_id)
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    current = AGENTS_DB[agent_id]["status"]
-    AGENTS_DB[agent_id]["status"] = "Alive" if current == "Offline" else "Offline"
-    return {"agent": AGENTS_DB[agent_id]}
+    # Toggle between IDLE and OFFLINE
+    current_state = agent.get("state", "IDLE")
+    new_state = "OFFLINE" if current_state != "OFFLINE" else "IDLE"
+    
+    db_manager.update_agent_status(agent_id, state=new_state)
+    return {"agent": db_manager.get_agent(agent_id)}
+
+@router.post("/api/agents/{agent_id}/terminate")
+async def terminate_agent(agent_id: str):
+    try:
+        db_manager.terminate_agent(agent_id)
+        return {"success": True, "message": f"Agent {agent_id} terminated."}
+    except ValueError as e:
+        # God Agent protection
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/api/agents/{agent_id}/config")
 async def update_agent_config(agent_id: str, config: ModelConfig):
-    if agent_id not in AGENTS_DB:
+    agent = db_manager.get_agent(agent_id)
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    AGENTS_DB[agent_id]["model"] = config.model
-    return {"agent": AGENTS_DB[agent_id]}
+    db_manager.upsert_agent_profile(agent_id, brain_model=config.model)
+    return {"agent": db_manager.get_agent(agent_id)}
 
 @router.put("/api/agents/{agent_id}/rename")
 async def rename_agent(agent_id: str, config: RenameConfig):
-    if agent_id not in AGENTS_DB:
+    agent = db_manager.get_agent(agent_id)
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    AGENTS_DB[agent_id]["name"] = config.name
-    return {"agent": AGENTS_DB[agent_id]}
+    db_manager.upsert_agent_profile(agent_id, agent_name=config.name)
+    return {"agent": db_manager.get_agent(agent_id)}
 
 @router.put("/api/agents/{agent_id}/update")
 async def update_agent_full(agent_id: str, config: UpdateAgentRequest):
-    if agent_id not in AGENTS_DB:
+    agent = db_manager.get_agent(agent_id)
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    AGENTS_DB[agent_id]["name"] = config.name
-    AGENTS_DB[agent_id]["role"] = config.role
-    AGENTS_DB[agent_id]["model"] = config.model
-    AGENTS_DB[agent_id]["custom_skills"] = config.custom_skills
-    AGENTS_DB[agent_id]["custom_tools"] = config.custom_tools
-    return {"agent": AGENTS_DB[agent_id]}
+    db_manager.upsert_agent_profile(
+        agent_id,
+        agent_name=config.name,
+        role=config.role,
+        brain_model=config.model,
+        custom_skills=config.custom_skills,
+        equipped_tools=config.custom_tools
+    )
+    return {"agent": db_manager.get_agent(agent_id)}

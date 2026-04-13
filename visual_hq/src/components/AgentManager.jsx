@@ -172,10 +172,249 @@ const WhatsAppQRPanel = ({ onScanned }) => {
               Waiting for scan...
             </div>
           </div>
+<<<<<<< HEAD
           <button type="button" className="tool-qr-confirm-btn" onClick={handleSimulateScан}>
             ✅ I've scanned the code
           </button>
         </>
+=======
+
+          <AnimatePresence>
+            {showHireModal && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0, scale: 0.98 }}
+                animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                exit={{ opacity: 0, height: 0, scale: 0.98 }}
+                className="agent-hire-modal"
+              >
+                <div className="agent-hire-icon">📝</div>
+                <h3 className="agent-hire-title">
+                  <span className="agent-hire-badge">Recruitment Form</span>
+                  Define Agent Capabilities
+                </h3>
+
+                <form onSubmit={handleHireAgent} className="agent-hire-form relative z-10">
+                  <div className="agent-hire-col">
+                    <div>
+                      <label className="jules-form-label">Agent Name (e.g. Alice, Hermes)</label>
+                      <input required type="text" placeholder="Worker Name" value={newAgent.name} onChange={(e) => setNewAgent({...newAgent, name: e.target.value})} className="jules-input" />
+                    </div>
+                    <div>
+                      <label className="jules-form-label">Role Description</label>
+                      <input required type="text" placeholder="React & UI/UX Expert" value={newAgent.role} onChange={(e) => setNewAgent({...newAgent, role: e.target.value})} className="jules-input" />
+                    </div>
+                    <div>
+                      <label className="jules-form-label">Capacities & Skills</label>
+                      <textarea required placeholder="Tailwind CSS, React Hooks, UI Animations, Microinteractions..." value={newAgent.skills} onChange={(e) => setNewAgent({...newAgent, skills: e.target.value})} className="jules-input" rows={3}></textarea>
+                    </div>
+                  </div>
+
+                  <div className="agent-hire-col">
+                    <div className="jules-form-row">
+                      <div className="jules-form-half">
+                        <label className="jules-form-label">Permission Tier</label>
+                        <select value={newAgent.tier} onChange={(e) => setNewAgent({...newAgent, tier: e.target.value})} className="jules-input">
+                          <option>Tier 1 (Executive Override)</option>
+                          <option>Tier 2 (Cloud Operations)</option>
+                          <option>Tier 3 (Local Swarm)</option>
+                        </select>
+                      </div>
+                      <div className="jules-form-half">
+                        <label className="jules-form-label">Model Provider</label>
+                        <select value={newAgent.model} onChange={(e) => setNewAgent({...newAgent, model: e.target.value})} className="jules-input">
+                          <option value="gpt-4o">GPT-4o</option>
+                          <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                          <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                          <option value="qwen2.5-coder">Qwen2.5-Coder (Local)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="jules-form-label" style={{ marginBottom: '8px' }}>Equip Caveman Primitives (Tools)</label>
+                      <div className="agent-tool-grid">
+                        <label className={`agent-tool-option ${newAgent.tools.jules ? "active jules" : ""}`}>
+                          <input type="checkbox" checked={newAgent.tools.jules} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, jules: e.target.checked}})} className="hidden" />
+                          <span className="text-xl">🔮</span>
+                          <span className="agent-tool-label">Jules.Google API</span>
+                        </label>
+                        <label className={`agent-tool-option ${newAgent.tools.github ? "active github" : ""}`}>
+                          <input type="checkbox" checked={newAgent.tools.github} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, github: e.target.checked}})} className="hidden" />
+                          <span className="text-xl">🐙</span>
+                          <span className="agent-tool-label">GitHub CLI (PRs)</span>
+                        </label>
+                        <label className={`agent-tool-option ${newAgent.tools.bash ? "active bash" : ""}`}>
+                          <input type="checkbox" checked={newAgent.tools.bash} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, bash: e.target.checked}})} className="hidden" />
+                          <span className="text-xl">⌨️</span>
+                          <span className="agent-tool-label">Bash Terminal</span>
+                        </label>
+                        <label className={`agent-tool-option ${newAgent.tools.docker ? "active docker" : ""}`}>
+                          <input type="checkbox" checked={newAgent.tools.docker} onChange={(e) => setNewAgent({...newAgent, tools: {...newAgent.tools, docker: e.target.checked}})} className="hidden" />
+                          <span className="text-xl">🐳</span>
+                          <span className="agent-tool-label">Docker Sandbox</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <button type="submit" className="jules-dispatch-btn" style={{ marginTop: '16px', width: '100%' }}>
+                      + Finalize Recruitment & Mount Agent
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Render Active Agents */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {currentAgents.map((agent, i) => {
+              const isEditing = editingAgent?.id === agent.id;
+              
+              if (isEditing) {
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    key={agent.id} 
+                    className="agent-edit-modal"
+                  >
+                    <div className="flex justify-between items-center mb-4 border-b border-neutral-700 pb-2">
+                      <h3 className="agent-hire-title" style={{ fontSize: '1rem', margin: 0 }}>Edit System Configuration</h3>
+                      <button onClick={() => setEditingAgent(null)} className="text-neutral-400 hover:text-white" aria-label="Close edit modal">✕</button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Agent Name</label>
+                          <input type="text" value={editingAgent.name} onChange={e => setEditingAgent({...editingAgent, name: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
+                        </div>
+                        <div>
+                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Role Description</label>
+                          <input type="text" value={editingAgent.role} onChange={e => setEditingAgent({...editingAgent, role: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Model Provider</label>
+                          <select value={editingAgent.model} onChange={e => setEditingAgent({...editingAgent, model: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }}>
+                            <option value="gpt-4o">gpt-4o</option>
+                            <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
+                            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                            <option value="qwen2.5-coder">qwen2.5-coder</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Capacities & Skills</label>
+                          <input type="text" value={editingAgent.custom_skills} onChange={e => setEditingAgent({...editingAgent, custom_skills: e.target.value})} className="jules-input" style={{ padding: '8px 12px' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Equipped Tool Primitives</label>
+                        <div className="flex gap-4">
+                          {['jules', 'github', 'bash', 'docker'].map(tool => (
+                            <label key={tool} className="flex items-center gap-2 text-xs text-white bg-neutral-900 p-2 rounded border border-neutral-700 cursor-pointer hover:border-neutral-500">
+                              <input 
+                                type="checkbox" 
+                                checked={editingAgent.custom_tools.includes(tool)}
+                                onChange={e => {
+                                  const newTools = e.target.checked 
+                                    ? [...editingAgent.custom_tools, tool]
+                                    : editingAgent.custom_tools.filter(t => t !== tool);
+                                  setEditingAgent({...editingAgent, custom_tools: newTools});
+                                }}
+                              />
+                              {tool === 'jules' ? '🔮' : tool === 'github' ? '🐙' : tool === 'docker' ? '🐳' : '⌨️'} {tool}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4 mt-6">
+                        <button onClick={handleSaveEdit} className="jules-dispatch-btn">
+                          💾 Save Configurations
+                        </button>
+                        <button onClick={() => setEditingAgent(null)} className="jules-action-btn" style={{ padding: '10px', width: '100%', fontSize: '0.9rem', background: 'var(--bg-card)' }}>
+                          ❌ Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              }
+
+              return (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                key={agent.id} 
+                className="agent-card group"
+              >
+                <button 
+                  onClick={() => setEditingAgent(agent)}
+                  className="agent-edit-btn opacity-0 group-hover:opacity-100"
+                >
+                  ⚙️ Edit Profile
+                </button>
+
+                <div className="flex-1 pt-2">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h2 className="agent-card-name">{agent.name}</h2>
+                      <span className="agent-card-role">{agent.role}</span>
+                    </div>
+                    <div className="flex gap-2 items-center lg:pr-20">
+                      <span className="agent-status-label">{agent.status}</span>
+                      <div className={`agent-status-dot ${agent.status === "Alive" ? "alive" : "dead"}`}></div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Assigned Brain (Model)</label>
+                    <div className="jules-input" style={{ padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer' }} onClick={() => setEditingAgent(agent)}>
+                      {agent.model}
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <label className="jules-form-label" style={{ fontSize: '0.65rem' }}>Intrinsic Skills</label>
+                    <p className="agent-card-skills">
+                      {agent.custom_skills}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="agent-card-divider hidden md:block"></div>
+
+                <div className="flex-1 flex flex-col justify-between pt-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-neutral-500 mb-2 uppercase tracking-wide">Equipped Primtives (Tools)</label>
+                    <div className="flex flex-wrap gap-2">
+                      {agent.custom_tools.map(tool => (
+                        <span key={tool} className={`agent-tool-badge ${tool}`}
+                        >
+                          {tool === 'jules' ? '🔮 Jules AI' : tool === 'github' ? '🐙 GitHub' : tool === 'docker' ? '🐳 Docker' : '⌨️ Bash'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => toggleAgent(agent.id)}
+                    className={`agent-action-btn ${agent.status === "Alive" ? "suspend" : "provision"}`}
+                  >
+                    {agent.status === 'Alive' ? 'Suspend Instance' : 'Provision & Wake Up'}
+                  </button>
+                </div>
+              </motion.div>
+            )})}
+          </div>
+
+        </div>
+>>>>>>> 9d50f5eef049fe40c4baf5c3ed24fccccf297477
       )}
     </div>
   );
@@ -379,12 +618,18 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       {/* ── Footer ── */}
       <div className="dossier-footer">
         <button className="dossier-edit-btn" onClick={() => onEdit(agent)}>⚙️ Configure</button>
-        <button
-          className="dossier-power-btn suspend"
-          onClick={() => onTerminate(agent.id, agent.name)}
-        >
-          🔴 Terminate
-        </button>
+        {['god', 'ceo'].includes(agent.agent_id) ? (
+          <div className="dossier-protected-badge" title="This is a system-critical agent and cannot be terminated.">
+            🛡️ Protected Agent
+          </div>
+        ) : (
+          <button
+            className="dossier-power-btn suspend"
+            onClick={() => onTerminate(agent.agent_id || agent.id, agent.agent_name || agent.name)}
+          >
+            🔴 Terminate
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -541,12 +786,19 @@ const AgentManager = ({ apiUsage = [] }) => {
 
   const normalizedAgents = agents.map(a => ({
     ...a,
+    id: a.agent_id || a.id,
+    name: a.agent_name || a.name,
+    status: a.state === 'IDLE' ? 'Alive' : a.state || a.status, // Map IDLE to 'Alive' for UI dot
+    model: a.brain_model || a.model,
     custom_skills: a.custom_skills || (a.role?.includes('QA') ? 'Testing, Code Review, Linting' : 'Full-Stack Development, API Integration'),
     toolconfigs: a.toolconfigs || {},
   }));
 
   const displayed = normalizedAgents.filter(a =>
-    !filterText || a.name?.toLowerCase().includes(filterText.toLowerCase()) || a.role?.toLowerCase().includes(filterText.toLowerCase())
+    !filterText || 
+    (a.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
+    (a.role || '').toLowerCase().includes(filterText.toLowerCase()) ||
+    (a.agent_id || '').toLowerCase().includes(filterText.toLowerCase())
   );
 
   // Count ready tools in form for submit label

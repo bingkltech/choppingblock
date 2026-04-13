@@ -181,11 +181,12 @@ def seed_jules_accounts() -> None:
         ("jules_account_4", "JULES_KEY_4"),
         ("jules_account_5", "JULES_KEY_5"),
     ]
-    for name, env_var in accounts:
-        conn.execute(
-            "INSERT OR IGNORE INTO API_Usage (account_name, api_key_env_var, last_reset_date) VALUES (?, ?, ?)",
-            (name, env_var, str(date.today()))
-        )
+    today = str(date.today())
+    account_data = [(name, env_var, today) for name, env_var in accounts]
+    conn.executemany(
+        "INSERT OR IGNORE INTO API_Usage (account_name, api_key_env_var, last_reset_date) VALUES (?, ?, ?)",
+        account_data
+    )
     conn.commit()
     conn.close()
     logger.info("🌱 Seeded 5 Jules cloud accounts.")
@@ -272,13 +273,33 @@ def seed_default_agents() -> None:
         ("ops",    "Ops Agent",               "tier3", "ollama:qwen2.5-coder","DevOps Engineer",          "CI/CD, GitHub Actions, Docker, Linux Administration", '["github","bash","docker"]'),
     ]
     for (aid, name, tier, brain, role, skills, tools) in agents:
-        conn.execute(
-            """INSERT OR IGNORE INTO Agent_Status
-               (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
-                toolconfigs, state, hired_at, last_heartbeat)
-               VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
-            (aid, name, tier, brain, role, skills, tools, now, now)
-        )
+        # Special case: God Agent config from user requirements
+        if aid == "god":
+            brain = "gemini-2.5-pro"
+            skills = "System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect"
+            tools = '["bash", "github", "jules", "browser", "docker", "antigravity"]'
+            
+            # Use UPSERT logic for God Agent to ensure requirements are met
+            conn.execute(
+                """INSERT INTO Agent_Status
+                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
+                    toolconfigs, state, hired_at, last_heartbeat)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)
+                   ON CONFLICT(agent_id) DO UPDATE SET
+                   brain_model=excluded.brain_model,
+                   custom_skills=excluded.custom_skills,
+                   equipped_tools=excluded.equipped_tools,
+                   role=excluded.role""",
+                (aid, name, tier, brain, role, skills, tools, now, now)
+            )
+        else:
+            conn.execute(
+                """INSERT OR IGNORE INTO Agent_Status
+                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
+                    toolconfigs, state, hired_at, last_heartbeat)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
+                (aid, name, tier, brain, role, skills, tools, now, now)
+            )
     conn.commit()
     conn.close()
     logger.info("🤖 Seeded default agents.")
@@ -331,6 +352,10 @@ def upsert_agent_profile(agent_id: str, **kwargs) -> None:
 
 def terminate_agent(agent_id: str) -> None:
     """Marks agent as terminated. They stay in the DB for audit but won't appear in active roster."""
+    if agent_id in ("god", "ceo"):
+        logger.warning(f"🚫 Attempt to terminate critical agent {agent_id} blocked.")
+        raise ValueError(f"The {agent_id.upper()} Agent is a system-critical executive and cannot be terminated.")
+
     conn = get_connection()
     conn.execute(
         "UPDATE Agent_Status SET terminated = 1, terminated_at = ?, state = 'TERMINATED' WHERE agent_id = ?",
@@ -344,18 +369,24 @@ def terminate_agent(agent_id: str) -> None:
 def update_agent_status(agent_id: str, state: str, current_task: str = None, health_pct: float = None) -> None:
     """Updates the live state of an agent and timestamps the heartbeat."""
     conn = get_connection()
-    updates = ["state = ?", "last_heartbeat = ?"]
-    params = [state, datetime.now().isoformat()]
+
+    # Securely collect updates into a dictionary
+    update_data = {
+        "state": state,
+        "last_heartbeat": datetime.now().isoformat()
+    }
 
     if current_task is not None:
-        updates.append("current_task = ?")
-        params.append(current_task)
+        update_data["current_task"] = current_task
     if health_pct is not None:
-        updates.append("health_pct = ?")
-        params.append(health_pct)
+        update_data["health_pct"] = health_pct
 
-    params.append(agent_id)
-    conn.execute(f"UPDATE Agent_Status SET {', '.join(updates)} WHERE agent_id = ?", params)
+    # Security: Columns are hardcoded in the dictionary above,
+    # but we still use parameterized values for the update.
+    sets = ", ".join(f"{k} = ?" for k in update_data.keys())
+    params = list(update_data.values()) + [agent_id]
+
+    conn.execute(f"UPDATE Agent_Status SET {sets} WHERE agent_id = ?", params)
     conn.commit()
     conn.close()
 
@@ -434,18 +465,29 @@ def upsert_project(project_name: str, **kwargs) -> None:
     conn = get_connection()
     existing = conn.execute("SELECT id FROM Projects WHERE project_name = ?", (project_name,)).fetchone()
 
+    # Security: Allowlist of valid columns to prevent SQL injection via keys
+    allowed_cols = {
+        "status", "language", "active_agents", "current_task",
+        "health_pct", "pipeline_stage", "created_at", "updated_at"
+    }
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed_cols}
+
     now = datetime.now().isoformat()
     if existing:
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        vals = list(kwargs.values()) + [now, project_name]
-        conn.execute(f"UPDATE Projects SET {sets}, updated_at = ? WHERE project_name = ?", vals)
+        if not filtered_kwargs:
+            # Only update updated_at if no other changes
+            conn.execute("UPDATE Projects SET updated_at = ? WHERE project_name = ?", (now, project_name))
+        else:
+            sets = ", ".join(f"{k} = ?" for k in filtered_kwargs)
+            vals = list(filtered_kwargs.values()) + [now, project_name]
+            conn.execute(f"UPDATE Projects SET {sets}, updated_at = ? WHERE project_name = ?", vals)
     else:
-        kwargs["project_name"] = project_name
-        kwargs["created_at"] = now
-        kwargs["updated_at"] = now
-        cols = ", ".join(kwargs.keys())
-        placeholders = ", ".join("?" for _ in kwargs)
-        conn.execute(f"INSERT INTO Projects ({cols}) VALUES ({placeholders})", list(kwargs.values()))
+        filtered_kwargs["project_name"] = project_name
+        filtered_kwargs["created_at"] = now
+        filtered_kwargs["updated_at"] = now
+        cols = ", ".join(filtered_kwargs.keys())
+        placeholders = ", ".join("?" for _ in filtered_kwargs)
+        conn.execute(f"INSERT INTO Projects ({cols}) VALUES ({placeholders})", list(filtered_kwargs.values()))
 
     conn.commit()
     conn.close()
@@ -523,29 +565,28 @@ def update_jules_session(
 ) -> None:
     """Updates the status and metadata of a tracked Jules session."""
     conn = get_connection()
-    updates = []
-    params = []
 
+    # Securely collect updates into a dictionary
+    update_data = {}
     if status is not None:
-        updates.append("status = ?")
-        params.append(status)
+        update_data["status"] = status
     if pr_url is not None:
-        updates.append("pr_url = ?")
-        params.append(pr_url)
+        update_data["pr_url"] = pr_url
     if plan_approved is not None:
-        updates.append("plan_approved = ?")
-        params.append(1 if plan_approved else 0)
+        update_data["plan_approved"] = 1 if plan_approved else 0
     if error_log is not None:
-        updates.append("error_log = ?")
-        params.append(error_log)
+        update_data["error_log"] = error_log
     if completed:
-        updates.append("completed_at = ?")
-        params.append(datetime.now().isoformat())
+        update_data["completed_at"] = datetime.now().isoformat()
 
-    if updates:
-        params.append(session_id)
+    if update_data:
+        # Security: Columns are hardcoded in the dictionary above,
+        # but we still use parameterized values for the update.
+        sets = ", ".join(f"{k} = ?" for k in update_data.keys())
+        params = list(update_data.values()) + [session_id]
+
         conn.execute(
-            f"UPDATE Jules_Sessions SET {', '.join(updates)} WHERE session_id = ?",
+            f"UPDATE Jules_Sessions SET {sets} WHERE session_id = ?",
             params
         )
         conn.commit()

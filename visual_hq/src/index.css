@@ -194,6 +194,11 @@ body::before {
 .topbar-nav-item.active {
   border-bottom: 2px solid var(--accent-teal);
 }
+.topbar-nav-item:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
 .topbar-nav-item svg {
   width: 20px;
   height: 20px;
@@ -310,6 +315,11 @@ body::before {
   width: 3px;
   background: var(--accent-teal);
   border-radius: 0 3px 3px 0;
+}
+.sidebar-item:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
 }
 .sidebar-item svg {
   width: 20px;
@@ -2121,6 +2131,24 @@ body::before {
 }
 .dossier-power-btn.suspend:hover {
   background: rgba(239, 68, 68, 0.2);
+}
+
+.dossier-protected-badge {
+  flex: 1.4;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(20, 184, 166, 0.08);
+  color: var(--accent-teal);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-xs);
+  cursor: default;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* ════════════════════════════════════════════

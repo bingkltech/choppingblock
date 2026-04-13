@@ -23,6 +23,7 @@ export default function Sidebar({ activeView, setActiveView }) {
           onClick={() => setActiveView(item.label)}
           title={item.label}
           aria-label={item.label}
+          aria-current={activeView === item.label ? 'page' : undefined}
           id={`sidebar-${item.label.toLowerCase()}`}
         >
           <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
