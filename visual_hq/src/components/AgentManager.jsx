@@ -105,7 +105,7 @@ const SYSTEM_AGENTS = [
     agent_id: 'god',
     agent_name: 'God Agent',
     tier: 'tier1',
-    brain_model: 'gemini-2.5-pro',
+    brain_model: 'gemini-3.1-pro',
     role: 'System Overseer',
     custom_skills: 'System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect',
     equipped_tools: ['bash', 'github', 'jules', 'browser', 'docker', 'antigravity'],
@@ -134,6 +134,7 @@ const MODEL_OPTIONS = [
   {
     group: '🟢 Ollama — Local (Free, Offline)',
     models: [
+      { value: 'ollama:default',     label: 'Ollama: Default (Dynamic)' },
       { value: 'qwen3.5:4b',         label: 'Qwen 3.5 (4B) — fast, lightweight' },
       { value: 'qwen3.5:9b',         label: 'Qwen 3.5 (9B) — balanced' },
       { value: 'gemma4:latest',       label: 'Gemma 4 (14B) — Google local' },
@@ -159,6 +160,7 @@ const MODEL_OPTIONS = [
   {
     group: '💎 Paid — API Key Required',
     models: [
+      { value: 'gemini-3.1-pro',          label: 'Google: Gemini 3.1 Pro' },
       { value: 'gemini-2.5-pro',          label: 'Google: Gemini 2.5 Pro' },
       { value: 'gemini-2.5-flash',        label: 'Google: Gemini 2.5 Flash' },
       { value: 'gemini-2.0-flash',        label: 'Google: Gemini 2.0 Flash' },
@@ -184,6 +186,15 @@ const BLANK_FORM = {
   skills: '',
   toolconfigs: {},   // { [toolId]: { field_key: value, ... } }
 };
+
+function getModelLabel(value) {
+  if (!value) return 'No model assigned';
+  for (const group of MODEL_OPTIONS) {
+    const found = group.models.find(m => m.value === value);
+    if (found) return found.label;
+  }
+  return value;
+}
 
 // ─────────────────────────────────────────────
 // WHATSAPP QR PANEL
@@ -363,6 +374,27 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
   const isSystem = agent.is_system || ['god', 'ceo'].includes(agent.agent_id);
   const equippedArray = Array.isArray(agent.equipped_tools) ? agent.equipped_tools : [];
 
+  const [testResult, setTestResult] = React.useState(null);
+  const [isTesting, setIsTesting] = React.useState(false);
+
+  const handleTestBrain = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/models/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: agent.model, api_key: agent.apiKeys || '' })
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch (e) {
+      setTestResult({ ok: false, status: 'Backend unreachable' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   // Build list of tools: from toolconfigs status OR from equipped_tools array
   const equippedTools = ALL_TOOL_IDS.filter(id => {
     const cfg = toolconfigs[id] || {};
@@ -401,7 +433,35 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       {/* ── Brain ── */}
       <div className="dossier-section">
         <div className="dossier-section-label"><span className="section-icon">🧠</span> BRAIN</div>
-        <div className="brain-pill">{agent.model || 'No model assigned'}</div>
+        <div className="brain-pill-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="brain-pill">{getModelLabel(agent.model)}</div>
+          
+          <button 
+            onClick={handleTestBrain}
+            disabled={isTesting || !agent.model}
+            className={`btn-test-connection ${testResult ? (testResult.ok ? 'connected' : 'failed') : ''}`}
+            title="Test connection to the AI Provider"
+          >
+            {isTesting ? '⏳ Testing...' : (testResult ? (testResult.ok ? '✅ Connected' : '❌ Failed') : '🔌 Test Connection')}
+          </button>
+
+          {testResult && (
+            <button
+              onClick={() => setTestResult(null)}
+              className="btn-test-connection"
+              style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #ef4444', color: '#ef4444' }}
+              title="Reset and disconnect test"
+            >
+              ✕ Disconnect
+            </button>
+          )}
+          
+          {testResult && (
+            <div className={`connection-msg ${testResult.ok ? 'ok' : 'err'}`} style={{ fontSize: '0.75rem', width: '100%', marginTop: '4px' }}>
+              {testResult.status}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Skills ── */}
@@ -474,6 +534,8 @@ const AgentManager = ({ apiUsage = [] }) => {
   const [form, setForm] = useState(BLANK_FORM);
   const [filterText, setFilterText] = useState('');
   const [skillFetch, setSkillFetch] = useState({ source: '', loading: false, error: null });
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   const fetchAgents = async () => {
     try {
@@ -495,11 +557,13 @@ const AgentManager = ({ apiUsage = [] }) => {
   const openHireModal = () => {
     setForm(BLANK_FORM);
     setEditingAgent(null);
+    setTestResult(null);
     setShowHireModal(true);
   };
 
   const openEditModal = (agent) => {
     setEditingAgent(agent);
+    setTestResult(null);
     setForm({
       name: agent.name || '',
       role: agent.role || '',
@@ -621,12 +685,13 @@ const AgentManager = ({ apiUsage = [] }) => {
       const merged = { ...sa, ...db };
       return {
         ...merged,
-        id: merged.agent_id,
-        name: merged.agent_name || sa.agent_name,
-        status: (merged.state === 'IDLE' || !merged.state) ? 'Alive' : merged.state,
-        model: merged.brain_model || sa.brain_model,
-        custom_skills: merged.custom_skills || sa.custom_skills,
-        toolconfigs: merged.toolconfigs || sa.toolconfigs || {},
+        id: db.id || sa.agent_id,
+        name: db.name || sa.agent_name,
+        status: (db.state === 'IDLE' || !db.state) ? 'Alive' : db.state,
+        model: db.model || sa.brain_model,
+        apiKeys: db.apiKeys || sa.api_key || '',
+        custom_skills: db.custom_skills || sa.custom_skills,
+        toolconfigs: db.toolconfigs || sa.toolconfigs || {},
         is_system: true,
       };
     });
@@ -641,6 +706,7 @@ const AgentManager = ({ apiUsage = [] }) => {
         name: a.agent_name || a.name,
         status: a.state === 'IDLE' ? 'Alive' : a.state || a.status,
         model: a.brain_model || a.model,
+        apiKeys: a.api_key || '',
         custom_skills: a.custom_skills || (a.role?.includes('QA') ? 'Testing, Code Review, Linting' : 'Full-Stack Development, API Integration'),
         toolconfigs: a.toolconfigs || {},
       }));
@@ -770,6 +836,38 @@ const AgentManager = ({ apiUsage = [] }) => {
                           </optgroup>
                         ))}
                       </select>
+                      
+                      <div style={{ marginTop: 8, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                         <button 
+                           type="button"
+                           onClick={async () => {
+                             setIsTesting(true);
+                             setTestResult(null);
+                             try {
+                               const res = await fetch('http://localhost:8000/api/models/test', {
+                                 method: 'POST',
+                                 headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify({ model: form.brain_provider, api_key: form.brain_api_key || '' })
+                               });
+                               setTestResult(await res.json());
+                             } catch {
+                               setTestResult({ ok: false, status: 'Backend unreachable' });
+                             } finally {
+                               setIsTesting(false);
+                             }
+                           }}
+                           disabled={isTesting}
+                           className={`btn-test-connection ${testResult ? (testResult.ok ? 'connected' : 'failed') : ''}`}
+                         >
+                           {isTesting ? '⏳ Testing...' : (testResult ? (testResult.ok ? '✅ Connected' : '❌ Failed') : '🔌 Test Connection')}
+                         </button>
+                         {testResult && (
+                           <div className={`connection-msg ${testResult.ok ? 'ok' : 'err'}`} style={{ fontSize: '0.75rem', marginTop: 1 }}>
+                             {testResult.status}
+                           </div>
+                         )}
+                      </div>
+
                     </div>
                     <div>
                       <label className="hire-label">API Key <span className="hire-label-note">(blank for Ollama)</span></label>

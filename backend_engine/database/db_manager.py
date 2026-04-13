@@ -9,8 +9,42 @@ import os
 import logging
 from datetime import datetime, date
 from typing import Optional
+import json
+from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
+
+KEY_FILE = os.path.join(os.path.dirname(__file__), ".secret.key")
+_FERNET: Optional[Fernet] = None
+
+def get_fernet() -> Fernet:
+    global _FERNET
+    if _FERNET is None:
+        if not os.path.exists(KEY_FILE):
+            key = Fernet.generate_key()
+            with open(KEY_FILE, "wb") as f:
+                f.write(key)
+        else:
+            with open(KEY_FILE, "rb") as f:
+                key = f.read()
+        _FERNET = Fernet(key)
+    return _FERNET
+
+def encrypt_val(val: str) -> str:
+    if not val:
+        return ""
+    try:
+        return get_fernet().encrypt(val.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return val
+
+def decrypt_val(val: str) -> str:
+    if not val:
+        return ""
+    try:
+        return get_fernet().decrypt(val.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return val
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "ledger.db")
 
@@ -275,21 +309,15 @@ def seed_default_agents() -> None:
     for (aid, name, tier, brain, role, skills, tools) in agents:
         # Special case: God Agent config from user requirements
         if aid == "god":
-            brain = "gemini-2.5-pro"
+            brain = "gemini-3.1-pro"
             skills = "System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect"
             tools = '["bash", "github", "jules", "browser", "docker", "antigravity"]'
             
-            # Use UPSERT logic for God Agent to ensure requirements are met
             conn.execute(
-                """INSERT INTO Agent_Status
+                """INSERT OR IGNORE INTO Agent_Status
                    (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
                     toolconfigs, state, hired_at, last_heartbeat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)
-                   ON CONFLICT(agent_id) DO UPDATE SET
-                   brain_model=excluded.brain_model,
-                   custom_skills=excluded.custom_skills,
-                   equipped_tools=excluded.equipped_tools,
-                   role=excluded.role""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
                 (aid, name, tier, brain, role, skills, tools, now, now)
             )
         else:
@@ -317,7 +345,15 @@ def upsert_agent_profile(agent_id: str, **kwargs) -> None:
 
     # Serialize dicts to JSON strings
     if 'toolconfigs' in kwargs and isinstance(kwargs['toolconfigs'], dict):
-        kwargs['toolconfigs'] = json.dumps(kwargs['toolconfigs'])
+        kwargs['toolconfigs'] = encrypt_val(json.dumps(kwargs['toolconfigs']))
+    elif 'toolconfigs' in kwargs:
+        kwargs['toolconfigs'] = encrypt_val(kwargs['toolconfigs'])
+        
+    if 'api_key' in kwargs and kwargs['api_key']:
+        kwargs['api_key'] = encrypt_val(kwargs['api_key'])
+
+    if 'equipped_tools' in kwargs and isinstance(kwargs['equipped_tools'], list):
+        kwargs['equipped_tools'] = json.dumps(kwargs['equipped_tools'])
     if 'equipped_tools' in kwargs and isinstance(kwargs['equipped_tools'], list):
         kwargs['equipped_tools'] = json.dumps(kwargs['equipped_tools'])
 
@@ -404,10 +440,14 @@ def get_all_agents(include_terminated: bool = False) -> list[dict]:
     result = []
     for r in rows:
         d = dict(r)
+        d['api_key'] = decrypt_val(d.get('api_key', ''))
         # Deserialize JSON blobs back to Python objects
         for field in ('toolconfigs', 'equipped_tools'):
+            val = d.get(field) or '{}'
+            if field == 'toolconfigs':
+                val = decrypt_val(val)
             try:
-                d[field] = json.loads(d.get(field) or '{}')
+                d[field] = json.loads(val)
             except Exception:
                 d[field] = {} if field == 'toolconfigs' else []
         result.append(d)
@@ -423,9 +463,13 @@ def get_agent(agent_id: str) -> Optional[dict]:
     if not row:
         return None
     d = dict(row)
+    d['api_key'] = decrypt_val(d.get('api_key', ''))
     for field in ('toolconfigs', 'equipped_tools'):
+        val = d.get(field) or '{}'
+        if field == 'toolconfigs':
+            val = decrypt_val(val)
         try:
-            d[field] = json.loads(d.get(field) or '{}')
+            d[field] = json.loads(val)
         except Exception:
             d[field] = {} if field == 'toolconfigs' else []
     return d
