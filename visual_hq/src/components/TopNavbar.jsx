@@ -30,7 +30,7 @@ export default function TopNavbar({ shift, onToggleShift, activeView, setActiveV
 
       <nav className="topbar-nav">
         {tabs.map(tab => (
-          <button
+          <button aria-label={tab.label}
             key={tab.id}
             id={`nav-${tab.id}`}
             className={`topbar-nav-item ${activeView === tab.label ? 'active' : ''}`}
