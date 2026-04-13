@@ -12,11 +12,18 @@ import sys
 import os
 import time
 import logging
+import threading
+import glob
 from datetime import datetime
 
 # Force UTF-8 for Windows console
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
+
+# Ensure backend_engine is importable
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend_engine'))
+
+from workforce.tier1_executives.god_agent import GodAgent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,11 +95,75 @@ def _log_crash(stderr: str) -> None:
     logger.info("📝 Crash log saved: %s", crash_file)
 
 
+def _get_latest_crash_log() -> str:
+    """Read the most recent crash log file."""
+    crash_dir = os.path.join(os.path.dirname(__file__), "backend_engine", "crash_logs")
+    logs = sorted(glob.glob(os.path.join(crash_dir, "crash_*.log")), reverse=True)
+    if not logs:
+        return ""
+    try:
+        with open(logs[0], "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+def _health_poll_loop(god: GodAgent) -> None:
+    """Background thread: checks agent heartbeats every 60 seconds."""
+    import urllib.request
+    import json as _json
+    while True:
+        time.sleep(60)
+        try:
+            resp = urllib.request.urlopen("http://localhost:8000/api/agents", timeout=5)
+            data = _json.loads(resp.read().decode())
+            agents = data.get("agents", [])
+            now = datetime.now()
+            for agent in agents:
+                hb = agent.get("last_heartbeat")
+                if not hb:
+                    continue
+                try:
+                    last = datetime.fromisoformat(hb)
+                    age = (now - last).total_seconds()
+                    if age > 120 and agent.get("state") not in ("IDLE", "TERMINATED"):
+                        logger.warning(
+                            "GOD HEALTH: Agent %s heartbeat stale (%ds ago)",
+                            agent.get("id"), int(age)
+                        )
+                        # Post an alert
+                        alert_data = _json.dumps({
+                            "agent_id": agent.get("id"),
+                            "alert_type": "STALE_HEARTBEAT",
+                            "message": f"Agent {agent.get('name', agent.get('id'))} heartbeat stale ({int(age)}s)"
+                        }).encode()
+                        req = urllib.request.Request(
+                            "http://localhost:8000/api/alerts",
+                            data=alert_data,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(req, timeout=5)
+                except (ValueError, TypeError):
+                    pass
+        except Exception as e:
+            logger.debug("GOD HEALTH: Poll failed (backend may be starting): %s", e)
+
+
 def main() -> None:
     """The main watchdog loop with restart logic."""
     print("=" * 60)
-    print("👑 GOD PROCESS — PAPERCLIP REBORN WATCHDOG")
+    print("\U0001f451 GOD PROCESS \u2014 PAPERCLIP REBORN WATCHDOG")
     print("=" * 60)
+
+    # Instantiate the God Agent with its DB-configured brain
+    god = GodAgent()
+    logger.info("\U0001f451 God Agent online | Brain: %s", god.model)
+
+    # Start the health polling thread (daemon so it dies with main)
+    health_thread = threading.Thread(target=_health_poll_loop, args=(god,), daemon=True)
+    health_thread.start()
+    logger.info("\U0001f4a5 Health polling thread started (60s interval)")
 
     restart_times: list[float] = []
     restart_count = 0
@@ -105,38 +176,52 @@ def main() -> None:
 
         if len(restart_times) >= MAX_RESTARTS:
             logger.critical(
-                "🔴 HALT: %d crashes in %d seconds. Entering safe mode.",
+                "\U0001f534 HALT: %d crashes in %d seconds. Entering safe mode.",
                 MAX_RESTARTS, CRASH_WINDOW
             )
-            logger.critical("🔴 Manual intervention required. Check crash_logs/")
+            logger.critical("\U0001f534 Manual intervention required. Check crash_logs/")
             break
 
         exit_code = run_backend()
 
         if exit_code == 0:
-            logger.info("✅ Backend exited cleanly (code 0). Shutting down God Process.")
+            logger.info("\u2705 Backend exited cleanly (code 0). Shutting down God Process.")
             break
 
         restart_count += 1
         restart_times.append(time.time())
 
         logger.warning(
-            "⚠️ Backend crashed (exit code %d). Restart %d/%d in %ds...",
+            "\u26a0\ufe0f Backend crashed (exit code %d). Restart %d/%d in %ds...",
             exit_code, restart_count, MAX_RESTARTS, RESTART_COOLDOWN
         )
 
-        # In the full system, the God Agent would:
-        # 1. Read the crash log
-        # 2. Analyze the traceback with its Premium LLM brain
-        # 3. Patch the offending Python file
-        # 4. Then this loop restarts the fixed code
+        # GOD AGENT: Read crash log and attempt self-healing
+        crash_text = _get_latest_crash_log()
+        if crash_text:
+            logger.info("\U0001f451 God Agent analyzing crash...")
+            try:
+                result = god.heal(crash_text, auto_apply=False)  # BOSS mode by default
+                if result.get("success"):
+                    logger.info(
+                        "\U0001f451 God Agent diagnosis: %s | Fixable: %s",
+                        result.get("root_cause", "unknown"),
+                        result.get("fixable", result.get("applied", False)),
+                    )
+                else:
+                    logger.warning("\U0001f451 God Agent could not analyze crash: %s", result.get("error"))
+            except Exception as e:
+                logger.error("\U0001f451 God Agent heal() raised: %s", e)
+        else:
+            logger.info("\U0001f451 No crash log found to analyze")
 
         time.sleep(RESTART_COOLDOWN)
 
     print("=" * 60)
-    print("👑 GOD PROCESS — TERMINATED")
+    print("\U0001f451 GOD PROCESS \u2014 TERMINATED")
     print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+

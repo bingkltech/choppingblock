@@ -14,6 +14,10 @@ import requests
 from typing import Optional
 from datetime import datetime
 
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from database.db_manager import get_god_brain, log_heal_action
+
 logger = logging.getLogger(__name__)
 
 # ==========================================
@@ -47,11 +51,10 @@ If you cannot determine a fix, output:
 # OLLAMA HTTP API (more reliable than CLI piping)
 # ==========================================
 OLLAMA_URL = "http://localhost:11434/api/generate"
-GOD_MODEL = "qwen3.5:9b"
 GOD_TIMEOUT = 120  # seconds
 
 
-def _query_ollama(prompt: str, system: str = GOD_SOUL, model: str = GOD_MODEL) -> Optional[str]:
+def _query_ollama(prompt: str, system: str = GOD_SOUL, model: str = "qwen3.5:9b") -> Optional[str]:
     """
     Query local Ollama via HTTP API. Returns the model's text response.
     Uses streaming to collect the full response.
@@ -128,6 +131,59 @@ def _extract_json(text: str) -> Optional[dict]:
     return None
 
 
+def _query_gemini(prompt: str, system: str = GOD_SOUL, model: str = "gemini-2.5-flash", api_key: str = "") -> Optional[str]:
+    """
+    Query Google Gemini via REST API. Returns the model's text response.
+    """
+    if not api_key:
+        # Try to read from environment
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        logger.error("GOD AGENT: No Gemini API key configured")
+        return None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    try:
+        resp = requests.post(
+            url,
+            json={
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+            },
+            timeout=GOD_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+    except requests.exceptions.ConnectionError:
+        logger.error("GOD AGENT: Gemini API unreachable")
+        return None
+    except requests.exceptions.Timeout:
+        logger.error("GOD AGENT: Gemini API timed out after %ds", GOD_TIMEOUT)
+        return None
+    except Exception as e:
+        logger.error("GOD AGENT: Gemini query failed: %s", str(e))
+        return None
+
+
+def _query_brain(prompt: str, system: str = GOD_SOUL, model: str = "qwen3.5:9b", api_key: str = "") -> Optional[str]:
+    """
+    Dispatcher: routes to the correct provider based on model name prefix.
+    """
+    if model.startswith("gemini-"):
+        return _query_gemini(prompt, system, model, api_key)
+    elif model.startswith("claude-"):
+        logger.warning("GOD AGENT: Claude provider not yet supported — falling back to Ollama")
+        return _query_ollama(prompt, system, "qwen3.5:9b")
+    elif model == "ollama:default":
+        # Use whatever Ollama has loaded — default to qwen3.5:9b
+        return _query_ollama(prompt, system, "qwen3.5:9b")
+    else:
+        # Assume it's an Ollama model name
+        return _query_ollama(prompt, system, model)
+
+
 # ==========================================
 # 👑 THE GOD AGENT CLASS
 # ==========================================
@@ -141,13 +197,22 @@ class GodAgent:
     def __init__(self):
         self.agent_id = "god"
         self.agent_name = "God Agent"
-        self.model = GOD_MODEL
+        self.model = self._load_brain()
         self.state = "IDLE"
         self.current_task = None
         self.workspace_path = os.path.join(
             os.path.dirname(__file__), "..", "shared_workspace"
         )
         self.rules_count = self._count_existing_rules()
+        logger.info("GOD AGENT: Initialized with brain=%s", self.model)
+
+    def _load_brain(self) -> str:
+        """Read the configured brain from the database."""
+        try:
+            return get_god_brain()
+        except Exception as e:
+            logger.warning("GOD AGENT: Could not load brain from DB (%s), using fallback", e)
+            return "qwen3.5:9b"
 
     def _set_state(self, state: str, task: str = None):
         """Update agent state (logged, and can broadcast via API later)."""
@@ -204,15 +269,15 @@ class GodAgent:
 
 Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object, no other text."""
 
-        # Step 4: Query Ollama
+        # Step 4: Query the configured brain (dynamic provider)
         logger.info("GOD AGENT: Sending crash to %s for analysis...", self.model)
-        raw_response = _query_ollama(prompt)
+        raw_response = _query_brain(prompt, model=self.model)
 
         if not raw_response:
-            self._set_state("ERROR", "Ollama unreachable or timed out")
+            self._set_state("ERROR", "Brain unreachable or timed out")
             return {
                 "success": False,
-                "error": "Ollama unreachable",
+                "error": "Brain unreachable",
                 "traceback": traceback_text,
             }
 
@@ -380,6 +445,18 @@ Analyze this crash and provide a JSON fix. Remember: output ONLY the JSON object
         else:
             logger.info("GOD AGENT: BOSS MODE — patch queued for human approval")
             analysis["applied"] = False
+
+        # Step 4: Log the healing action to the database
+        try:
+            log_heal_action(
+                crash_file=analysis.get("file"),
+                root_cause=analysis.get("root_cause"),
+                patch_applied=analysis.get("applied", False),
+                rule_written=analysis.get("applied", False),
+                model_used=self.model,
+            )
+        except Exception as e:
+            logger.warning("GOD AGENT: Could not log heal action: %s", e)
 
         logger.info("=" * 60)
         logger.info("GOD AGENT: HEALING CYCLE COMPLETE — applied=%s", analysis.get("applied"))

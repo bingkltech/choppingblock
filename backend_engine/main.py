@@ -28,6 +28,7 @@ from database.db_manager import (
     get_all_projects, upsert_project,
     get_unresolved_alerts, create_alert, resolve_alert,
     get_all_jules_sessions,
+    get_heal_log,
 )
 from anatomy.shift_manager import ShiftManager, ShiftMode
 from routers import admin_router
@@ -257,6 +258,27 @@ async def api_get_agent(agent_id: str):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
+
+
+# --- Heal Log ---
+
+@app.get("/api/heal-log")
+async def api_get_heal_log():
+    """Returns the last 20 God Agent healing actions."""
+    return {"heal_log": get_heal_log(20)}
+
+
+@app.post("/api/god/heal")
+async def api_trigger_heal(body: dict):
+    """Manually trigger a God Agent heal cycle for testing."""
+    traceback_text = body.get("traceback", "")
+    if not traceback_text:
+        raise HTTPException(status_code=400, detail="Missing 'traceback' in body")
+    from workforce.tier1_executives.god_agent import GodAgent
+    god = GodAgent()
+    result = god.heal(traceback_text, auto_apply=False)
+    log_activity("god", "HEAL_CYCLE", f"Manual heal: {result.get('root_cause', 'unknown')}")
+    return result
 
 
 class AgentProfileBody(BaseModel):

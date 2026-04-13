@@ -2198,6 +2198,17 @@ body::before {
   vertical-align: middle;
 }
 
+/* ── Healing state (God Agent actively patching) ── */
+.dossier-healing {
+  border-color: rgba(234, 179, 8, 0.6) !important;
+  box-shadow: var(--shadow-card), 0 0 20px rgba(234, 179, 8, 0.2);
+  animation: heal-pulse 1.5s ease-in-out infinite;
+}
+@keyframes heal-pulse {
+  0%, 100% { box-shadow: var(--shadow-card), 0 0 12px rgba(234, 179, 8, 0.15); }
+  50% { box-shadow: var(--shadow-card), 0 0 28px rgba(234, 179, 8, 0.35); }
+}
+
 /* ════════════════════════════════════════════
    HIRE / EDIT MODAL
    ════════════════════════════════════════════ */

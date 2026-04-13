@@ -196,6 +196,20 @@ def init_database() -> None:
         )
     """)
 
+    # --- Table 7: Heal Log (God Agent self-healing audit trail) ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Heal_Log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            crash_file TEXT,
+            root_cause TEXT,
+            patch_applied INTEGER DEFAULT 0,
+            rule_written INTEGER DEFAULT 0,
+            model_used TEXT,
+            raw_response TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     logger.info("📦 Ledger database initialized at %s", DB_PATH)
@@ -400,6 +414,56 @@ def terminate_agent(agent_id: str) -> None:
     conn.commit()
     conn.close()
     logger.info("🔴 Agent terminated: %s", agent_id)
+
+
+def get_god_brain() -> str:
+    """Returns the God Agent's configured brain_model from the database.
+    Falls back to 'qwen3.5:9b' if not found."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT brain_model FROM Agent_Status WHERE agent_id = 'god'"
+    ).fetchone()
+    conn.close()
+    if row and row["brain_model"]:
+        return row["brain_model"]
+    return "qwen3.5:9b"
+
+
+def log_heal_action(
+    crash_file: str = None,
+    root_cause: str = None,
+    patch_applied: bool = False,
+    rule_written: bool = False,
+    model_used: str = None,
+    raw_response: str = None,
+) -> None:
+    """Record a God Agent healing action to the Heal_Log table."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO Heal_Log (timestamp, crash_file, root_cause, patch_applied, rule_written, model_used, raw_response) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            datetime.now().isoformat(),
+            crash_file,
+            root_cause,
+            1 if patch_applied else 0,
+            1 if rule_written else 0,
+            model_used,
+            (raw_response or "")[:2000],  # cap raw response size
+        ),
+    )
+    conn.commit()
+    conn.close()
+    logger.info("🩺 Heal action logged: %s", root_cause or "unknown")
+
+
+def get_heal_log(limit: int = 20) -> list[dict]:
+    """Returns the most recent healing actions."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Heal_Log ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def update_agent_status(agent_id: str, state: str, current_task: str = None, health_pct: float = None) -> None:

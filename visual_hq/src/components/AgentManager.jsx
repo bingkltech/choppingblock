@@ -373,6 +373,18 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
   const isAlive = agent.status === 'Alive';
   const isSystem = agent.is_system || ['god', 'ceo'].includes(agent.agent_id);
   const equippedArray = Array.isArray(agent.equipped_tools) ? agent.equipped_tools : [];
+  const isGod = agent.agent_id === 'god' || agent.id === 'god';
+  const isHealing = agent.state === 'HEALING';
+  const [healLog, setHealLog] = useState([]);
+
+  useEffect(() => {
+    if (isGod) {
+      fetch('http://localhost:8000/api/heal-log')
+        .then(r => r.json())
+        .then(data => setHealLog((data.heal_log || []).slice(0, 5)))
+        .catch(() => {});
+    }
+  }, [isGod]);
 
   const [testResult, setTestResult] = React.useState(null);
   const [isTesting, setIsTesting] = React.useState(false);
@@ -407,7 +419,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className={`dossier-card ${isSystem ? 'dossier-system' : ''}`}
+      className={`dossier-card ${isSystem ? 'dossier-system' : ''} ${isHealing ? 'dossier-healing' : ''}`}
     >
       {/* System agent crown accent bar */}
       {isSystem && <div className="dossier-system-bar" />}
@@ -499,6 +511,33 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
           {equippedTools.length === 0 && <span className="no-hands">No tools equipped</span>}
         </div>
       </div>
+
+      {/* ── Heal History (God Agent only) ── */}
+      {isGod && healLog.length > 0 && (
+        <div className="dossier-section">
+          <div className="dossier-section-label"><span className="section-icon">🩺</span> HEAL HISTORY</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {healLog.map((h, i) => (
+              <div key={i} style={{
+                fontSize: '0.75rem',
+                padding: '6px 8px',
+                background: h.patch_applied ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${h.patch_applied ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                borderRadius: '6px',
+                color: '#d1d5db',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{h.patch_applied ? '✅' : '❌'} {h.root_cause || 'Unknown'}</span>
+                  <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>{h.model_used}</span>
+                </div>
+                <div style={{ color: '#6b7280', fontSize: '0.65rem', marginTop: '2px' }}>
+                  {h.timestamp?.split('T')[0]} | {h.crash_file || 'no file'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Footer ── */}
       <div className="dossier-footer">
