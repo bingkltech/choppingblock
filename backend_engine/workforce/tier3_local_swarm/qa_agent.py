@@ -1,12 +1,9 @@
 """
 🐳 qa_agent.py — The Tier 3 Local Worker: QA Agent
 Pulls PRs, runs code in Docker sandboxes, sends pass/fail results.
-Uses local Ollama (llama3) for zero-cost code review.
 """
 
-import os
 import logging
-from typing import Optional
 
 from ..anatomy.agent_core import BaseAgent, AgentState
 
@@ -87,26 +84,6 @@ class QAAgent(BaseAgent):
                 "output": result["error_output"] or result["test_output"],
             }
 
-    def run_code_review(self, code: str) -> Optional[str]:
-        """
-        Use local Ollama to do a quick code review (zero cost).
-        """
-        from ..caveman_tools.primitive_ollama import run_prompt
-
-        self.set_state(AgentState.TESTING, "Running code review via Ollama")
-
-        result = run_prompt(
-            prompt=f"Review this code for bugs and security issues. Be concise:\n\n{code}",
-            model=self.brain,
-            system="You are a senior code reviewer. List only critical issues, one per line.",
-        )
-
-        if result["success"]:
-            self.set_state(AgentState.SUCCESS, "Code review complete")
-            return result["response"]
-        else:
-            self.set_state(AgentState.ERROR, "Code review failed")
-            return None
 
 
 if __name__ == "__main__":
