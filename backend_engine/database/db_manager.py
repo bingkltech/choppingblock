@@ -152,11 +152,12 @@ def seed_jules_accounts() -> None:
         ("jules_account_4", "JULES_KEY_4"),
         ("jules_account_5", "JULES_KEY_5"),
     ]
-    for name, env_var in accounts:
-        conn.execute(
-            "INSERT OR IGNORE INTO API_Usage (account_name, api_key_env_var, last_reset_date) VALUES (?, ?, ?)",
-            (name, env_var, str(date.today()))
-        )
+    today = str(date.today())
+    account_data = [(name, env_var, today) for name, env_var in accounts]
+    conn.executemany(
+        "INSERT OR IGNORE INTO API_Usage (account_name, api_key_env_var, last_reset_date) VALUES (?, ?, ?)",
+        account_data
+    )
     conn.commit()
     conn.close()
     logger.info("🌱 Seeded 5 Jules cloud accounts.")
@@ -240,13 +241,14 @@ def seed_default_agents() -> None:
         ("qa", "QA Agent", 3, "llama3", '["primitive_docker", "primitive_bash"]'),
         ("ops", "Ops Agent", 3, "qwen2.5-coder", '["primitive_gh", "primitive_bash"]'),
     ]
-    for agent_id, name, tier, brain, tools in agents:
-        conn.execute(
-            """INSERT OR IGNORE INTO Agent_Status 
-               (agent_id, agent_name, tier, brain_model, equipped_tools, last_heartbeat) 
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (agent_id, name, tier, brain, tools, datetime.now().isoformat())
-        )
+    now = datetime.now().isoformat()
+    agent_data = [(a[0], a[1], a[2], a[3], a[4], now) for a in agents]
+    conn.executemany(
+        """INSERT OR IGNORE INTO Agent_Status
+           (agent_id, agent_name, tier, brain_model, equipped_tools, last_heartbeat)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        agent_data
+    )
     conn.commit()
     conn.close()
     logger.info("🤖 Seeded 9 default agents.")
