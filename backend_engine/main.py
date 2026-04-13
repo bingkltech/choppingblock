@@ -232,6 +232,67 @@ def _compute_fleet_stats() -> dict:
 async def root():
     return {"name": "📎 Paperclip Reborn", "status": "online", "version": "0.1.0"}
 
+# --- Settings ---
+
+GLOBAL_KEYS = ["OPENAI_API_KEY", "CLAUDE_API_KEY", "GEMINI_API_KEY", "GITHUB_PAT", "JULES_API_KEY"]
+
+@app.get("/api/settings/env")
+async def get_env_settings():
+    """Returns obscured values for global API keys."""
+    settings = {}
+    for key in GLOBAL_KEYS:
+        val = os.getenv(key, "")
+        if len(val) > 8:
+            settings[key] = f"{val[:4]}...{val[-4:]}"
+        elif val:
+            settings[key] = "***"
+        else:
+            settings[key] = ""
+    return settings
+
+class EnvUpdateRequest(BaseModel):
+    keys: dict
+
+@app.post("/api/settings/env")
+async def update_env_settings(body: EnvUpdateRequest):
+    """Updates global API keys in .env and os.environ."""
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    
+    # Update live env
+    for k, v in body.keys.items():
+        if k in GLOBAL_KEYS and v:  # Only update allowed keys if provided
+            os.environ[k] = v.strip()
+
+    # Read current .env
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    # Modify lines
+    for k, v in body.keys.items():
+        if k not in GLOBAL_KEYS or not v:
+            continue
+        v = v.strip()
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{k}="):
+                lines[i] = f"{k}={v}\n"
+                updated = True
+                break
+        if not updated:
+            # Insert at the end
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(f"{k}={v}\n")
+
+    # Write back
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    return {"success": True}
+
+
 
 # --- Agents ---
 
