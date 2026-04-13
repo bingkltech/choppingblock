@@ -264,7 +264,7 @@ const AgentManager = ({ apiUsage = [] }) => {
                   >
                     <div className="flex justify-between items-center mb-4 border-b border-neutral-700 pb-2">
                       <h3 className="agent-hire-title" style={{ fontSize: '1rem', margin: 0 }}>Edit System Configuration</h3>
-                      <button onClick={() => setEditingAgent(null)} className="text-neutral-400 hover:text-white">✕</button>
+                      <button onClick={() => setEditingAgent(null)} className="text-neutral-400 hover:text-white" aria-label="Close edit modal">✕</button>
                     </div>
 
                     <div className="space-y-4">
