@@ -5,10 +5,12 @@ Uses a Premium LLM brain (Claude/GPT-4o) for massive context windows.
 """
 
 import os
+import sys
 import logging
 from typing import Optional
 
-from ...anatomy.agent_core import BaseAgent, AgentState
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from anatomy.agent_core import BaseAgent, AgentState
 
 logger = logging.getLogger(__name__)
 

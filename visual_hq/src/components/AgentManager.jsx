@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
 // ─────────────────────────────────────────────
 // TOOL DEFINITIONS — each tool knows how to connect
 // ─────────────────────────────────────────────
@@ -379,7 +381,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
 
   useEffect(() => {
     if (isGod) {
-      fetch('http://localhost:8000/api/heal-log')
+      fetch(`${API_BASE}/api/heal-log`)
         .then(r => r.json())
         .then(data => setHealLog((data.heal_log || []).slice(0, 5)))
         .catch(() => {});
@@ -393,7 +395,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
     setIsTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('http://localhost:8000/api/models/test', {
+      const res = await fetch(`${API_BASE}/api/models/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: agent.model, api_key: agent.apiKeys || '' })
@@ -577,7 +579,7 @@ const AgentManager = ({ apiUsage = [] }) => {
 
   const fetchAgents = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/agents');
+      const res = await fetch(`${API_BASE}/api/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
     } catch (e) { console.error('Failed to fetch agents:', e); }
@@ -587,7 +589,7 @@ const AgentManager = ({ apiUsage = [] }) => {
 
   const toggleAgent = async (agentId) => {
     try {
-      await fetch(`http://localhost:8000/api/agents/${agentId}/toggle`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/agents/${agentId}/toggle`, { method: 'POST' });
       fetchAgents();
     } catch (e) { console.error(e); }
   };
@@ -641,7 +643,7 @@ const AgentManager = ({ apiUsage = [] }) => {
     if (!skillFetch.source.trim()) return;
     setSkillFetch(s => ({ ...s, loading: true, error: null }));
     try {
-      const res = await fetch('http://localhost:8000/api/skills/extract', {
+      const res = await fetch(`${API_BASE}/api/skills/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: skillFetch.source.trim() }),
@@ -679,7 +681,7 @@ const AgentManager = ({ apiUsage = [] }) => {
     try {
       if (editingAgent) {
         // --- UPDATE existing agent ---
-        const res = await fetch(`http://localhost:8000/api/agents/${editingAgent.id}`, {
+        const res = await fetch(`${API_BASE}/api/agents/${editingAgent.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -687,7 +689,7 @@ const AgentManager = ({ apiUsage = [] }) => {
         if (!res.ok) throw new Error((await res.json()).detail || 'Update failed');
       } else {
         // --- CREATE new agent ---
-        const res = await fetch('http://localhost:8000/api/agents', {
+        const res = await fetch(`${API_BASE}/api/agents`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -706,7 +708,7 @@ const AgentManager = ({ apiUsage = [] }) => {
   const terminateAgent = async (agentId, agentName) => {
     if (!window.confirm(`⚠️ Terminate "${agentName}"? They will be removed from the roster permanently.`)) return;
     try {
-      await fetch(`http://localhost:8000/api/agents/${agentId}/terminate`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/agents/${agentId}/terminate`, { method: 'POST' });
       await fetchAgents();
     } catch (e) { console.error('Terminate failed:', e); }
   };
@@ -871,7 +873,7 @@ const AgentManager = ({ apiUsage = [] }) => {
                              setIsTesting(true);
                              setTestResult(null);
                              try {
-                               const res = await fetch('http://localhost:8000/api/models/test', {
+                               const res = await fetch(`${API_BASE}/api/models/test`, {
                                  method: 'POST',
                                  headers: { 'Content-Type': 'application/json' },
                                  body: JSON.stringify({ model: form.brain_provider, api_key: form.brain_api_key || '' })

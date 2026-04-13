@@ -50,8 +50,7 @@ If you cannot determine a fix, output:
 # ==========================================
 # OLLAMA HTTP API (more reliable than CLI piping)
 # ==========================================
-OLLAMA_URL = "http://localhost:11434/api/generate"
-GOD_TIMEOUT = 120  # seconds
+from config import OLLAMA_URL, OLLAMA_TIMEOUT as GOD_TIMEOUT, DEFAULT_OLLAMA_MODEL
 
 
 def _query_ollama(prompt: str, system: str = GOD_SOUL, model: str = "qwen3.5:9b") -> Optional[str]:

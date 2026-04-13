@@ -23,7 +23,9 @@ if sys.stdout.encoding != 'utf-8':
 # Ensure backend_engine is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend_engine'))
 
+
 from workforce.tier1_executives.god_agent import GodAgent
+from config import GOD_MAX_RESTARTS, GOD_RESTART_COOLDOWN, GOD_CRASH_WINDOW, GOD_HEALTH_POLL_INTERVAL, GOD_STALE_THRESHOLD, BACKEND_URL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,12 +34,12 @@ logging.basicConfig(
 logger = logging.getLogger("god_process")
 
 # ==========================================
-# CONFIGURATION
+# CONFIGURATION (from config.py)
 # ==========================================
 BACKEND_ENTRY = os.path.join(os.path.dirname(__file__), "backend_engine", "main.py")
-MAX_RESTARTS = 10
-RESTART_COOLDOWN = 5  # seconds between restarts
-CRASH_WINDOW = 60     # if MAX_RESTARTS happen within this window, halt
+MAX_RESTARTS = GOD_MAX_RESTARTS
+RESTART_COOLDOWN = GOD_RESTART_COOLDOWN
+CRASH_WINDOW = GOD_CRASH_WINDOW
 
 # ==========================================
 # 👑 THE WATCHDOG LOOP
@@ -113,9 +115,9 @@ def _health_poll_loop(god: GodAgent) -> None:
     import urllib.request
     import json as _json
     while True:
-        time.sleep(60)
+        time.sleep(GOD_HEALTH_POLL_INTERVAL)
         try:
-            resp = urllib.request.urlopen("http://localhost:8000/api/agents", timeout=5)
+            resp = urllib.request.urlopen(f"{BACKEND_URL}/api/agents", timeout=5)
             data = _json.loads(resp.read().decode())
             agents = data.get("agents", [])
             now = datetime.now()
@@ -126,7 +128,7 @@ def _health_poll_loop(god: GodAgent) -> None:
                 try:
                     last = datetime.fromisoformat(hb)
                     age = (now - last).total_seconds()
-                    if age > 120 and agent.get("state") not in ("IDLE", "TERMINATED"):
+                    if age > GOD_STALE_THRESHOLD and agent.get("state") not in ("IDLE", "TERMINATED"):
                         logger.warning(
                             "GOD HEALTH: Agent %s heartbeat stale (%ds ago)",
                             agent.get("id"), int(age)
@@ -138,7 +140,7 @@ def _health_poll_loop(god: GodAgent) -> None:
                             "message": f"Agent {agent.get('name', agent.get('id'))} heartbeat stale ({int(age)}s)"
                         }).encode()
                         req = urllib.request.Request(
-                            "http://localhost:8000/api/alerts",
+                            f"{BACKEND_URL}/api/alerts",
                             data=alert_data,
                             headers={"Content-Type": "application/json"},
                             method="POST",
