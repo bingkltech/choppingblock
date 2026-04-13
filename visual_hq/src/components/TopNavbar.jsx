@@ -3,9 +3,8 @@ import { useState, useEffect } from 'react';
 /**
  * TopNavbar — Dashboard top navigation bar matching the zZERO design.
  */
-export default function TopNavbar({ shift, onToggleShift }) {
+export default function TopNavbar({ shift, onToggleShift, activeView, setActiveView }) {
   const [time, setTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
@@ -34,8 +33,9 @@ export default function TopNavbar({ shift, onToggleShift }) {
           <button aria-label={tab.label}
             key={tab.id}
             id={`nav-${tab.id}`}
-            className={`topbar-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
+            className={`topbar-nav-item ${activeView === tab.label ? 'active' : ''}`}
+            onClick={() => setActiveView(tab.label)}
+            aria-current={activeView === tab.label ? 'page' : undefined}
           >
             <span style={{ fontSize: '1.1rem' }}>{tab.icon}</span>
             {tab.label}

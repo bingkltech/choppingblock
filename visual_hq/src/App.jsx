@@ -35,7 +35,7 @@ export default function App() {
   return (
     <div className="app-layout">
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
-      <TopNavbar shift={shift} onToggleShift={handleToggleShift} />
+      <TopNavbar shift={shift} onToggleShift={handleToggleShift} activeView={activeView} setActiveView={setActiveView} />
 
       {activeView === 'Agents' ? (
         <div style={{ gridArea: 'main', overflowY: 'auto', width: '100%', height: '100%' }}>
