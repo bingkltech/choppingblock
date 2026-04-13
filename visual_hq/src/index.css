@@ -2712,3 +2712,197 @@ body::before {
   border-radius: var(--radius-xs); padding: 8px 12px;
 }
 .skill-fetch-hint { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+
+/* ==========================================
+   📋 TASK QUEUE
+   ========================================== */
+.tq-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 32px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.tq-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+.tq-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.tq-stat-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.tq-stat-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+.tq-actions {
+  display: flex;
+  gap: 10px;
+}
+.tq-create-btn {
+  background: linear-gradient(135deg, var(--accent-teal), var(--accent-cyan));
+  color: #0a0e1a;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 9px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tq-create-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 16px var(--accent-teal-glow);
+}
+
+.tq-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.tq-form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.tq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tq-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  transition: all 0.2s;
+}
+.tq-item:hover {
+  border-color: var(--border-active);
+  box-shadow: var(--shadow-card);
+}
+.tq-status-running {
+  border-left: 3px solid #eab308;
+}
+.tq-status-done {
+  border-left: 3px solid #10b981;
+  opacity: 0.7;
+}
+.tq-status-failed {
+  border-left: 3px solid #ef4444;
+}
+
+.tq-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.tq-item-icon { font-size: 1rem; }
+.tq-item-type {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-teal);
+}
+.tq-item-id {
+  font-size: 0.65rem;
+  font-family: monospace;
+  color: var(--text-muted);
+}
+.tq-item-priority {
+  font-size: 0.7rem;
+  font-weight: 800;
+  margin-left: auto;
+}
+.tq-item-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tq-item-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.tq-item-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.tq-item-agent {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.tq-cancel-btn {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-xs);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tq-cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Tab switcher */
+.am-tabs {
+  display: flex;
+  gap: 2px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  width: fit-content;
+}
+.am-tab {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 7px 18px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.am-tab:hover { color: var(--text-primary); }
+.am-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}

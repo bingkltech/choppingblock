@@ -3,6 +3,8 @@ import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
+import TaskQueue from './TaskQueue';
+
 // ─────────────────────────────────────────────
 // TOOL DEFINITIONS — each tool knows how to connect
 // ─────────────────────────────────────────────
@@ -573,6 +575,7 @@ const AgentManager = ({ apiUsage = [] }) => {
   const [editingAgent, setEditingAgent] = useState(null);
   const dragControls = useDragControls();
   const [form, setForm] = useState(BLANK_FORM);
+  const [activeTab, setActiveTab] = useState('workforce');
   const [skillFetch, setSkillFetch] = useState({ source: '', loading: false, error: null });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -771,9 +774,18 @@ const AgentManager = ({ apiUsage = [] }) => {
           </p>
         </div>
         <div className="am-header-actions">
-          <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>
+          <div className="am-tabs">
+            <button className={`am-tab ${activeTab === 'workforce' ? 'active' : ''}`} onClick={() => setActiveTab('workforce')}>🤖 Workforce</button>
+            <button className={`am-tab ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => setActiveTab('tasks')}>📋 Task Queue</button>
+          </div>
+          {activeTab === 'workforce' && <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>}
         </div>
       </header>
+
+      {activeTab === 'tasks' ? (
+        <TaskQueue />
+      ) : (
+      <>
 
       {/* ── AGENT GRID ── */}
       <div className="am-grid">
@@ -988,6 +1000,8 @@ const AgentManager = ({ apiUsage = [] }) => {
           </>
         )}
       </AnimatePresence>
+      </>
+      )}
     </div>
   );
 };

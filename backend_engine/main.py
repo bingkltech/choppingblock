@@ -29,8 +29,11 @@ from database.db_manager import (
     get_unresolved_alerts, create_alert, resolve_alert,
     get_all_jules_sessions,
     get_heal_log,
+    create_task, get_all_tasks, get_pending_tasks, get_running_tasks,
+    cancel_task as db_cancel_task,
 )
 from anatomy.shift_manager import ShiftManager, ShiftMode
+from anatomy.orchestrator import Orchestrator
 from routers import admin_router
 from routers import jules_router_api
 
@@ -48,6 +51,7 @@ logger = logging.getLogger("paperclip.main")
 # ==========================================
 shift_manager = ShiftManager(default_mode=ShiftMode.BOSS)
 connected_clients: list[WebSocket] = []
+orchestrator = Orchestrator()
 
 # ==========================================
 # 🚀 LIFESPAN (startup/shutdown)
@@ -73,9 +77,15 @@ async def lifespan(app: FastAPI):
     log_activity("system", "BOOT", "Paperclip Reborn backend initialized successfully.")
     logger.info("✅ Backend ready. WebSocket at /ws/heartbeat")
 
+    # Start the Orchestrator as a background task
+    orch_task = asyncio.create_task(orchestrator.start())
+    logger.info("🎯 Orchestrator background loop started")
+
     yield
 
     # Shutdown
+    await orchestrator.stop()
+    orch_task.cancel()
     logger.info("🛑 Paperclip Reborn — Backend Engine shutting down.")
 
 
@@ -280,6 +290,61 @@ async def api_trigger_heal(body: dict):
     log_activity("god", "HEAL_CYCLE", f"Manual heal: {result.get('root_cause', 'unknown')}")
     return result
 
+
+# --- Task Queue ---
+
+class TaskCreateBody(BaseModel):
+    task_type: str       # WRITE_ARCH, CODE, TEST_PR, MERGE_PR, HEAL, GENERAL
+    description: str
+    priority: int = 5    # 1=highest, 10=lowest
+    input_data: dict = {}
+
+@app.post("/api/tasks")
+async def api_create_task(body: TaskCreateBody):
+    """Create a new task in the queue."""
+    import uuid
+    task_id = f"task_{uuid.uuid4().hex[:8]}"
+    task = create_task(
+        task_id=task_id,
+        task_type=body.task_type,
+        description=body.description,
+        priority=body.priority,
+        input_data=json.dumps(body.input_data),
+    )
+    log_activity("system", "TASK_CREATED", f"New task: {task_id} ({body.task_type})")
+    return task
+
+@app.get("/api/tasks")
+async def api_list_tasks(status: str = None, limit: int = 50):
+    """List tasks, optionally filtered by status."""
+    if status == "pending":
+        return {"tasks": get_pending_tasks(limit)}
+    elif status == "running":
+        return {"tasks": get_running_tasks()}
+    else:
+        return {"tasks": get_all_tasks(limit)}
+
+@app.get("/api/tasks/stats")
+async def api_task_stats():
+    """Quick stats for the dashboard header."""
+    all_tasks = get_all_tasks(200)
+    by_status = {}
+    for t in all_tasks:
+        s = t.get("status", "UNKNOWN")
+        by_status[s] = by_status.get(s, 0) + 1
+    return {
+        "total": len(all_tasks),
+        "by_status": by_status,
+        "orchestrator": orchestrator.status,
+    }
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def api_cancel_task(task_id: str):
+    """Cancel a pending or assigned task."""
+    if db_cancel_task(task_id):
+        log_activity("system", "TASK_CANCELLED", f"Task cancelled: {task_id}")
+        return {"ok": True, "task_id": task_id}
+    raise HTTPException(status_code=400, detail="Task not found or cannot be cancelled")
 
 class AgentProfileBody(BaseModel):
     """Full employee profile — used for both create and update."""

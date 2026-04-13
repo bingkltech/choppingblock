@@ -6,6 +6,7 @@ and real-time agent status for the Visual HQ dashboard.
 
 import sqlite3
 import os
+import json
 import logging
 from datetime import datetime, date
 from typing import Optional
@@ -207,6 +208,26 @@ def init_database() -> None:
             rule_written INTEGER DEFAULT 0,
             model_used TEXT,
             raw_response TEXT
+        )
+    """)
+
+    # --- Table 8: Task Queue (Orchestrator work items) ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Task_Queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL UNIQUE,
+            task_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            assigned_agent TEXT,
+            status TEXT DEFAULT 'PENDING',
+            priority INTEGER DEFAULT 5,
+            input_data TEXT DEFAULT '{}',
+            output_data TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            retry_count INTEGER DEFAULT 0,
+            max_retries INTEGER DEFAULT 2
         )
     """)
 
@@ -729,6 +750,160 @@ def get_all_jules_sessions(limit: int = 50) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ==========================================
+# 📋 TASK QUEUE HELPERS
+# ==========================================
+
+def create_task(task_id: str, task_type: str, description: str,
+                priority: int = 5, input_data: str = '{}') -> dict:
+    """Create a new task in the queue. Returns the created task."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    conn.execute(
+        """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (task_id, task_type, description, priority, input_data, now)
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
+    conn.close()
+    logger.info("📋 Task created: %s [%s] priority=%d", task_id, task_type, priority)
+    return dict(row) if row else {}
+
+
+def claim_task(task_id: str, agent_id: str) -> bool:
+    """Assign a PENDING task to an agent. Returns True if claimed."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'ASSIGNED', assigned_agent = ?, started_at = ?
+           WHERE task_id = ? AND status = 'PENDING'""",
+        (agent_id, now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.info("📋 Task %s claimed by %s", task_id, agent_id)
+    return success
+
+
+def start_task(task_id: str) -> bool:
+    """Move an ASSIGNED task to RUNNING."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'RUNNING', started_at = ?
+           WHERE task_id = ? AND status = 'ASSIGNED'""",
+        (now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def complete_task(task_id: str, output_data: str = '{}') -> bool:
+    """Mark a task as DONE with optional output."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'DONE', output_data = ?, completed_at = ?
+           WHERE task_id = ? AND status IN ('RUNNING', 'ASSIGNED')""",
+        (output_data, now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.info("📋 Task %s completed", task_id)
+    return success
+
+
+def fail_task(task_id: str, error: str = '') -> bool:
+    """Mark a task as FAILED. Increments retry_count."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'FAILED', output_data = ?, completed_at = ?,
+           retry_count = retry_count + 1
+           WHERE task_id = ? AND status IN ('RUNNING', 'ASSIGNED')""",
+        (json.dumps({"error": error}), now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.warning("📋 Task %s failed: %s", task_id, error[:100])
+    return success
+
+
+def retry_task(task_id: str) -> bool:
+    """Reset a FAILED task back to PENDING if under max_retries."""
+    conn = get_connection()
+    row = conn.execute("SELECT retry_count, max_retries FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
+    if not row or row['retry_count'] >= row['max_retries']:
+        conn.close()
+        return False
+    conn.execute(
+        """UPDATE Task_Queue SET status = 'PENDING', assigned_agent = NULL,
+           started_at = NULL, completed_at = NULL
+           WHERE task_id = ?""",
+        (task_id,)
+    )
+    conn.commit()
+    conn.close()
+    logger.info("📋 Task %s retrying (attempt %d)", task_id, row['retry_count'] + 1)
+    return True
+
+
+def get_pending_tasks(limit: int = 20) -> list[dict]:
+    """Get tasks waiting to be assigned, ordered by priority then creation time."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue WHERE status = 'PENDING' ORDER BY priority ASC, created_at ASC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_running_tasks() -> list[dict]:
+    """Get all currently running tasks."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue WHERE status IN ('ASSIGNED', 'RUNNING') ORDER BY started_at ASC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_tasks(limit: int = 50) -> list[dict]:
+    """Get recent tasks for the dashboard."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue ORDER BY created_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def cancel_task(task_id: str) -> bool:
+    """Cancel a PENDING or ASSIGNED task."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'CANCELLED', completed_at = ?
+           WHERE task_id = ? AND status IN ('PENDING', 'ASSIGNED')""",
+        (now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
 
 
 # ==========================================
