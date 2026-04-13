@@ -23,6 +23,15 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _safe_add_columns(cursor, table: str, cols: list) -> None:
+    """Idempotently ALTERs a table to add missing columns."""
+    for col, ctype, default in cols:
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ctype} DEFAULT {default}")
+        except Exception:
+            pass  # already exists
+
+
 def init_database() -> None:
     """Creates all tables if they don't exist. Safe to call on every boot."""
     conn = get_connection()
@@ -62,17 +71,37 @@ def init_database() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL UNIQUE,
             agent_name TEXT NOT NULL,
-            tier INTEGER NOT NULL,
+            tier TEXT DEFAULT 'tier3',
             brain_model TEXT,
+            role TEXT DEFAULT '',
             current_task TEXT DEFAULT 'Idle',
             state TEXT DEFAULT 'IDLE',
             health_pct REAL DEFAULT 100.0,
             language TEXT DEFAULT 'Python',
             last_heartbeat TEXT,
             equipped_tools TEXT DEFAULT '[]',
+            custom_skills TEXT DEFAULT '',
+            toolconfigs TEXT DEFAULT '{}',
+            api_key TEXT DEFAULT '',
+            mcp_endpoints TEXT DEFAULT '',
+            terminated INTEGER DEFAULT 0,
+            hired_at TEXT,
+            terminated_at TEXT,
             error_log TEXT
         )
     """)
+
+    # Safe migrations for any pre-existing DB
+    _safe_add_columns(cursor, 'Agent_Status', [
+        ('role',          'TEXT',    "''"),
+        ('custom_skills', 'TEXT',    "''"),
+        ('toolconfigs',   'TEXT',    "'{}'"),
+        ('api_key',       'TEXT',    "''"),
+        ('mcp_endpoints', 'TEXT',    "''"),
+        ('terminated',    'INTEGER', '0'),
+        ('hired_at',      'TEXT',    "''"),
+        ('terminated_at', 'TEXT',    "''"),
+    ])
 
     # --- Table 3: Activity Log (for the Activity Feed panel) ---
     cursor.execute("""
@@ -227,29 +256,89 @@ def update_api_usage_config(account_name: str, api_key: str, model: str, github_
 # ==========================================
 
 def seed_default_agents() -> None:
-    """Seeds the default agent roster into Agent_Status."""
+    """Seeds the default agent roster into Agent_Status (INSERT OR IGNORE — never overwrites custom agents)."""
+    import json
     conn = get_connection()
+    now = datetime.now().isoformat()
     agents = [
-        ("ceo", "CEO Agent", 1, "claude-sonnet-4-20250514", '["primitive_bash", "primitive_gh"]'),
-        ("god", "God Agent", 1, "claude-sonnet-4-20250514", '["primitive_bash", "file_io"]'),
-        ("jules_1", "Antigravity (Jules 1)", 2, "gemini-1.5-pro", '["primitive_bash", "primitive_gh"]'),
-        ("jules_2", "Cloud Worker (Jules 2)", 2, "gemini-1.5-pro", '["primitive_bash", "primitive_gh"]'),
-        ("jules_3", "Cloud Worker (Jules 3)", 2, "gemini-1.5-pro", '["primitive_bash", "primitive_gh"]'),
-        ("jules_4", "Cloud Worker (Jules 4)", 2, "gemini-1.5-pro", '["primitive_bash", "primitive_gh"]'),
-        ("jules_5", "Cloud Worker (Jules 5)", 2, "gemini-1.5-pro", '["primitive_bash", "primitive_gh"]'),
-        ("qa", "QA Agent", 3, "llama3", '["primitive_docker", "primitive_bash"]'),
-        ("ops", "Ops Agent", 3, "qwen2.5-coder", '["primitive_gh", "primitive_bash"]'),
+        ("ceo",    "CEO Agent",               "tier1", "claude-3.5-sonnet",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
+        ("god",    "God Agent",               "tier1", "claude-3.5-sonnet",  "System Overseer",           "System monitoring, self-healing, meta-cognition",     '["bash"]'),
+        ("jules_1","Antigravity (Jules 1)",   "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration, Code Review", '["jules","github","bash"]'),
+        ("jules_2","Cloud Worker (Jules 2)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration",             '["jules","github","bash"]'),
+        ("jules_3","Cloud Worker (Jules 3)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Testing, QA, Code Review",                            '["jules","github","bash"]'),
+        ("jules_4","Cloud Worker (Jules 4)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "DevOps, CI/CD, Docker deployment",                    '["jules","docker","bash"]'),
+        ("jules_5","Cloud Worker (Jules 5)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Documentation, Architecture diagrams",                '["jules","browser","bash"]'),
+        ("qa",     "QA Agent",                "tier3", "ollama:llama3",      "QA Engineer",               "Testing, Code Review, Linting, Bug Reproduction",     '["docker","bash"]'),
+        ("ops",    "Ops Agent",               "tier3", "ollama:qwen2.5-coder","DevOps Engineer",          "CI/CD, GitHub Actions, Docker, Linux Administration", '["github","bash","docker"]'),
     ]
-    for agent_id, name, tier, brain, tools in agents:
+    for (aid, name, tier, brain, role, skills, tools) in agents:
         conn.execute(
-            """INSERT OR IGNORE INTO Agent_Status 
-               (agent_id, agent_name, tier, brain_model, equipped_tools, last_heartbeat) 
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (agent_id, name, tier, brain, tools, datetime.now().isoformat())
+            """INSERT OR IGNORE INTO Agent_Status
+               (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
+                toolconfigs, state, hired_at, last_heartbeat)
+               VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
+            (aid, name, tier, brain, role, skills, tools, now, now)
         )
     conn.commit()
     conn.close()
-    logger.info("🤖 Seeded 9 default agents.")
+    logger.info("🤖 Seeded default agents.")
+
+
+def upsert_agent_profile(agent_id: str, **kwargs) -> None:
+    """
+    Creates or fully updates an agent's profile in the DB.
+    Pass any subset of: agent_name, tier, brain_model, role, custom_skills,
+    toolconfigs (dict/str), api_key, mcp_endpoints, equipped_tools, state
+    """
+    import json
+    conn = get_connection()
+    now = datetime.now().isoformat()
+
+    # Serialize dicts to JSON strings
+    if 'toolconfigs' in kwargs and isinstance(kwargs['toolconfigs'], dict):
+        kwargs['toolconfigs'] = json.dumps(kwargs['toolconfigs'])
+    if 'equipped_tools' in kwargs and isinstance(kwargs['equipped_tools'], list):
+        kwargs['equipped_tools'] = json.dumps(kwargs['equipped_tools'])
+
+    existing = conn.execute(
+        "SELECT agent_id FROM Agent_Status WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+
+    if existing:
+        sets = ', '.join(f"{k} = ?" for k in kwargs)
+        vals = list(kwargs.values()) + [now, agent_id]
+        conn.execute(
+            f"UPDATE Agent_Status SET {sets}, last_heartbeat = ? WHERE agent_id = ?", vals
+        )
+    else:
+        kwargs['agent_id'] = agent_id
+        kwargs.setdefault('hired_at', now)
+        kwargs.setdefault('last_heartbeat', now)
+        kwargs.setdefault('state', 'IDLE')
+        kwargs.setdefault('toolconfigs', '{}')
+        kwargs.setdefault('equipped_tools', '[]')
+        cols = ', '.join(kwargs.keys())
+        placeholders = ', '.join('?' for _ in kwargs)
+        conn.execute(
+            f"INSERT INTO Agent_Status ({cols}) VALUES ({placeholders})",
+            list(kwargs.values())
+        )
+
+    conn.commit()
+    conn.close()
+    logger.info("💾 Upserted agent profile: %s", agent_id)
+
+
+def terminate_agent(agent_id: str) -> None:
+    """Marks agent as terminated. They stay in the DB for audit but won't appear in active roster."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE Agent_Status SET terminated = 1, terminated_at = ?, state = 'TERMINATED' WHERE agent_id = ?",
+        (datetime.now().isoformat(), agent_id)
+    )
+    conn.commit()
+    conn.close()
+    logger.info("🔴 Agent terminated: %s", agent_id)
 
 
 def update_agent_status(agent_id: str, state: str, current_task: str = None, health_pct: float = None) -> None:
@@ -271,20 +360,44 @@ def update_agent_status(agent_id: str, state: str, current_task: str = None, hea
     conn.close()
 
 
-def get_all_agents() -> list[dict]:
-    """Returns status of all agents for the dashboard."""
+def get_all_agents(include_terminated: bool = False) -> list[dict]:
+    """Returns all active agents (excludes terminated unless asked)."""
+    import json
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM Agent_Status ORDER BY tier, agent_name").fetchall()
+    where = "" if include_terminated else "WHERE terminated = 0 OR terminated IS NULL"
+    rows = conn.execute(
+        f"SELECT * FROM Agent_Status {where} ORDER BY tier, agent_name"
+    ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        # Deserialize JSON blobs back to Python objects
+        for field in ('toolconfigs', 'equipped_tools'):
+            try:
+                d[field] = json.loads(d.get(field) or '{}')
+            except Exception:
+                d[field] = {} if field == 'toolconfigs' else []
+        result.append(d)
+    return result
 
 
 def get_agent(agent_id: str) -> Optional[dict]:
-    """Returns a single agent's full status."""
+    """Returns a single agent's full profile."""
+    import json
     conn = get_connection()
     row = conn.execute("SELECT * FROM Agent_Status WHERE agent_id = ?", (agent_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    for field in ('toolconfigs', 'equipped_tools'):
+        try:
+            d[field] = json.loads(d.get(field) or '{}')
+        except Exception:
+            d[field] = {} if field == 'toolconfigs' else []
+    return d
 
 
 # ==========================================

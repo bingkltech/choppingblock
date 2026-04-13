@@ -6,7 +6,7 @@ Uses local Ollama (qwen2.5-coder) for zero-cost ops decisions.
 
 import logging
 
-from ..anatomy.agent_core import BaseAgent, AgentState
+from ...anatomy.agent_core import BaseAgent, AgentState
 
 logger = logging.getLogger(__name__)
 

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from database.db_manager import (
     init_database, seed_jules_accounts, seed_default_agents,
     get_all_agents, get_agent, update_agent_status,
+    upsert_agent_profile, terminate_agent,
     get_all_api_usage, get_least_used_account, log_token_usage,
     get_recent_activity, log_activity,
     get_all_projects, upsert_project,
@@ -225,7 +226,29 @@ async def root():
 
 @app.get("/api/agents")
 async def api_get_agents():
-    return {"agents": get_all_agents()}
+    """Returns all active (non-terminated) agents."""
+    agents = get_all_agents(include_terminated=False)
+    # Normalize field names for the frontend
+    normalized = []
+    for a in agents:
+        normalized.append({
+            "id":           a.get("agent_id"),
+            "name":         a.get("agent_name"),
+            "role":         a.get("role", ""),
+            "tier":         a.get("tier", "tier3"),
+            "status":       "Alive" if a.get("state") not in ("IDLE", "ERROR", "TERMINATED") else ("Error" if a.get("state") == "ERROR" else "Offline"),
+            "state":        a.get("state", "IDLE"),
+            "model":        a.get("brain_model", ""),
+            "custom_skills":a.get("custom_skills", ""),
+            "toolconfigs":  a.get("toolconfigs", {}),
+            "custom_tools": a.get("equipped_tools", []),
+            "apiKeys":      a.get("api_key", ""),
+            "mcpEndpoints": a.get("mcp_endpoints", ""),
+            "health_pct":   a.get("health_pct", 100.0),
+            "hired_at":     a.get("hired_at", ""),
+            "last_heartbeat": a.get("last_heartbeat", ""),
+        })
+    return {"agents": normalized}
 
 
 @app.get("/api/agents/{agent_id}")
@@ -236,13 +259,93 @@ async def api_get_agent(agent_id: str):
     return agent
 
 
+class AgentProfileBody(BaseModel):
+    """Full employee profile — used for both create and update."""
+    name:          Optional[str]  = None
+    role:          Optional[str]  = None
+    tier:          Optional[str]  = None
+    brain_model:   Optional[str]  = None
+    api_key:       Optional[str]  = None
+    mcp_endpoints: Optional[str]  = None
+    custom_skills: Optional[str]  = None
+    toolconfigs:   Optional[dict] = None
+    equipped_tools:Optional[list] = None
+    state:         Optional[str]  = None
+
+
+@app.post("/api/agents")
+async def api_create_agent(body: AgentProfileBody):
+    """Hire a new agent and persist to DB."""
+    if not body.name:
+        raise HTTPException(status_code=400, detail="name is required")
+    import re, time
+    agent_id = re.sub(r'[^a-z0-9_]', '_', (body.name or 'agent').lower()) + f"_{int(time.time()) % 100000}"
+
+    upsert_agent_profile(
+        agent_id,
+        agent_name=body.name,
+        role=body.role or "",
+        tier=body.tier or "tier3",
+        brain_model=body.brain_model or "ollama:llama3",
+        api_key=body.api_key or "",
+        mcp_endpoints=body.mcp_endpoints or "",
+        custom_skills=body.custom_skills or "",
+        toolconfigs=body.toolconfigs or {},
+        equipped_tools=body.equipped_tools or [],
+        state="IDLE",
+    )
+    log_activity(agent_id, "HIRED", f"Agent '{body.name}' joined the workforce.")
+    await broadcast({"type": "agent_update", "agents": get_all_agents()})
+    return {"ok": True, "agent_id": agent_id}
+
+
+@app.put("/api/agents/{agent_id}")
+async def api_update_agent_profile(agent_id: str, body: AgentProfileBody):
+    """Save/update an existing agent's full profile."""
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    updates = {k: v for k, v in {
+        "agent_name":    body.name,
+        "role":          body.role,
+        "tier":          body.tier,
+        "brain_model":   body.brain_model,
+        "api_key":       body.api_key,
+        "mcp_endpoints": body.mcp_endpoints,
+        "custom_skills": body.custom_skills,
+        "toolconfigs":   body.toolconfigs,
+        "equipped_tools":body.equipped_tools,
+        "state":         body.state,
+    }.items() if v is not None}
+
+    if updates:
+        upsert_agent_profile(agent_id, **updates)
+
+    log_activity(agent_id, "PROFILE_UPDATED", f"Agent '{agent_id}' profile saved.")
+    await broadcast({"type": "agent_update", "agents": get_all_agents()})
+    return {"ok": True}
+
+
+@app.post("/api/agents/{agent_id}/terminate")
+async def api_terminate_agent(agent_id: str):
+    """Permanently terminate an agent (soft-delete, kept for audit)."""
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    terminate_agent(agent_id)
+    log_activity(agent_id, "TERMINATED", f"Agent '{agent.get('agent_name')}' has been terminated.", severity="WARNING")
+    await broadcast({"type": "agent_update", "agents": get_all_agents()})
+    return {"ok": True}
+
+
 class AgentUpdateBody(BaseModel):
     state: Optional[str] = None
     current_task: Optional[str] = None
     health_pct: Optional[float] = None
 
 @app.patch("/api/agents/{agent_id}")
-async def api_update_agent(agent_id: str, body: AgentUpdateBody):
+async def api_patch_agent(agent_id: str, body: AgentUpdateBody):
     if body.state:
         update_agent_status(agent_id, body.state, body.current_task, body.health_pct)
         await broadcast({"type": "agent_update", "agents": get_all_agents()})
@@ -306,6 +409,104 @@ async def api_get_fleet():
 
 
 # ==========================================
+# 🧠 SKILLS EXTRACTOR (skill-seekers)
+# ==========================================
+
+class SkillExtractBody(BaseModel):
+    source: str  # GitHub repo (e.g. "facebook/react") or URL
+
+@app.post("/api/skills/extract")
+async def api_extract_skills(body: SkillExtractBody):
+    """
+    Runs skill-seekers against a GitHub repo or URL and returns
+    structured skill text suitable for populating an agent's Skills field.
+    """
+    import subprocess
+    import shutil
+    import tempfile
+    import re
+
+    source = body.source.strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="source is required")
+
+    logger.info("🔍 Extracting skills from: %s", source)
+
+    # Create a temp output directory
+    tmpdir = tempfile.mkdtemp(prefix="skill_extract_")
+
+    try:
+        result = subprocess.run(
+            ["skill-seekers", "create", source, "--output", tmpdir],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+
+        # skill-seekers writes a SKILL.md inside the output dir
+        skill_file = None
+        for root, dirs, files in os.walk(tmpdir):
+            for fname in files:
+                if fname.upper() == "SKILL.md" or fname.lower() == "skill.md":
+                    skill_file = os.path.join(root, fname)
+                    break
+
+        if skill_file and os.path.exists(skill_file):
+            with open(skill_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read()
+
+            # Extract the most useful sections: description + key skills
+            # Strip markdown headers and collapse whitespace
+            lines = [ln.strip() for ln in raw.splitlines()]
+            skill_lines = []
+            in_skills = False
+            for ln in lines:
+                if not ln:
+                    continue
+                # Grab lines that look like skill bullets or descriptions
+                if ln.startswith("##") or ln.startswith("###"):
+                    in_skills = True
+                    continue
+                if in_skills and (ln.startswith("-") or ln.startswith("*") or ln.startswith("•")):
+                    clean = re.sub(r'^[-*•]\s*', '', ln).strip()
+                    if clean:
+                        skill_lines.append(clean)
+                elif in_skills and len(ln) > 20 and not ln.startswith("#"):
+                    skill_lines.append(ln)
+
+            # Fallback: grab first 2000 chars of the raw markdown
+            if not skill_lines:
+                skill_text = raw[:2000].strip()
+            else:
+                skill_text = ", ".join(skill_lines[:30])
+
+            log_activity("system", "SKILL_EXTRACT", f"Skills extracted from {source}")
+            return {
+                "ok": True,
+                "source": source,
+                "skills": skill_text,
+                "raw_length": len(raw),
+            }
+
+        else:
+            # Return stderr for debugging
+            logger.warning("skill-seekers stdout: %s", result.stdout[:500])
+            logger.warning("skill-seekers stderr: %s", result.stderr[:500])
+            raise HTTPException(
+                status_code=422,
+                detail=f"skill-seekers ran but produced no SKILL.md. stderr: {result.stderr[:300]}"
+            )
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="skill-seekers timed out (120s). Try a smaller repo.")
+    except FileNotFoundError:
+        raise HTTPException(status_code=501, detail="skill-seekers CLI not found. Run: pip install skill-seekers")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ==========================================
 # 🚀 ENTRY POINT
 # ==========================================
 
@@ -317,3 +518,4 @@ if __name__ == "__main__":
 
     logger.info("🚀 Starting Paperclip Reborn on %s:%d", host, port)
     uvicorn.run("main:app", host=host, port=port, reload=True)
+

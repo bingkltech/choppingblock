@@ -8,7 +8,7 @@ import os
 import logging
 from typing import Optional
 
-from ..anatomy.agent_core import BaseAgent, AgentState
+from ...anatomy.agent_core import BaseAgent, AgentState
 
 logger = logging.getLogger(__name__)
 
