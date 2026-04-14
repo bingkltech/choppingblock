@@ -9,7 +9,7 @@ export default function Settings() {
     GITHUB_PAT: '',
     JULES_API_KEY: ''
   });
-  
+
   const [inputs, setInputs] = useState({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -36,13 +36,13 @@ export default function Settings() {
     e.preventDefault();
     setSaving(true);
     setMessage('');
-    
+
     // Only send keys that were modified and are not empty
     const updates = {};
     for (const [k, v] of Object.entries(inputs)) {
       if (v.trim()) updates[k] = v.trim();
     }
-    
+
     if (Object.keys(updates).length === 0) {
       setSaving(false);
       setMessage('No changes to save.');
@@ -55,7 +55,7 @@ export default function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys: updates })
       });
-      
+
       if (res.ok) {
         setMessage('Settings saved successfully!');
         setInputs({});
@@ -94,12 +94,12 @@ export default function Settings() {
       )}
 
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        
+
         {/* OpenAI */}
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>OpenAI API Key (GPT-4o, o3)</label>
-          <input 
-            type="password" 
+          <input
+            type="password"
             name="OPENAI_API_KEY"
             placeholder={keys.OPENAI_API_KEY ? `Current: ${keys.OPENAI_API_KEY}` : 'sk-proj-...'}
             value={inputs.OPENAI_API_KEY || ''}
@@ -111,8 +111,8 @@ export default function Settings() {
         {/* Anthropic */}
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Anthropic API Key (Claude 3.5 Sonnet / Opus)</label>
-          <input 
-            type="password" 
+          <input
+            type="password"
             name="CLAUDE_API_KEY"
             placeholder={keys.CLAUDE_API_KEY ? `Current: ${keys.CLAUDE_API_KEY}` : 'sk-ant-...'}
             value={inputs.CLAUDE_API_KEY || ''}
@@ -124,8 +124,8 @@ export default function Settings() {
         {/* Gemini */}
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Google Gemini API Key (Gemini 2.5 Pro / Flash)</label>
-          <input 
-            type="password" 
+          <input
+            type="password"
             name="GEMINI_API_KEY"
             placeholder={keys.GEMINI_API_KEY ? `Current: ${keys.GEMINI_API_KEY}` : 'AIzaSy...'}
             value={inputs.GEMINI_API_KEY || ''}
@@ -137,8 +137,8 @@ export default function Settings() {
         {/* Jules */}
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Jules Dispatch API Key</label>
-          <input 
-            type="password" 
+          <input
+            type="password"
             name="JULES_API_KEY"
             placeholder={keys.JULES_API_KEY ? `Current: ${keys.JULES_API_KEY}` : 'Enter Jules override key...'}
             value={inputs.JULES_API_KEY || ''}
@@ -150,8 +150,8 @@ export default function Settings() {
         {/* GitHub */}
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>GitHub Personal Access Token (for PRs / code syncing)</label>
-          <input 
-            type="password" 
+          <input
+            type="password"
             name="GITHUB_PAT"
             placeholder={keys.GITHUB_PAT ? `Current: ${keys.GITHUB_PAT}` : 'ghp_...'}
             value={inputs.GITHUB_PAT || ''}
@@ -160,16 +160,16 @@ export default function Settings() {
           />
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={saving}
-          style={{ 
-            background: 'var(--accent)', 
-            color: 'white', 
-            border: 'none', 
-            padding: '1rem', 
-            borderRadius: '4px', 
-            fontWeight: 'bold', 
+          style={{
+            background: 'var(--accent)',
+            color: 'white',
+            border: 'none',
+            padding: '1rem',
+            borderRadius: '4px',
+            fontWeight: 'bold',
             cursor: saving ? 'not-allowed' : 'pointer',
             opacity: saving ? 0.7 : 1,
             marginTop: '1rem'

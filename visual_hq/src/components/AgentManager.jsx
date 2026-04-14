@@ -308,7 +308,7 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
         </div>
       ))}
       <div style={{ marginTop: 12, display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <button 
+        <button
           type="button"
           onClick={handleTestTool}
           disabled={isTesting || Object.keys(config || {}).length === 0}
