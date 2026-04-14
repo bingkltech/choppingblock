@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+import TaskQueue from './TaskQueue';
+
 // ─────────────────────────────────────────────
 // TOOL DEFINITIONS — each tool knows how to connect
 // ─────────────────────────────────────────────
@@ -265,6 +269,26 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
     );
   }
 
+  const [testResult, setTestResult] = useState(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTestTool = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/tools/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool_id: toolId, config }),
+      });
+      setTestResult(await res.json());
+    } catch {
+      setTestResult({ ok: false, status: 'Backend unreachable' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   return (
     <div className="tool-cfg-panel">
       {def.fields.map(field => (
@@ -283,6 +307,21 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
           />
         </div>
       ))}
+      <div style={{ marginTop: 12, display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <button 
+          type="button"
+          onClick={handleTestTool}
+          disabled={isTesting || Object.keys(config || {}).length === 0}
+          className={`btn-test-connection ${testResult ? (testResult.ok ? 'connected' : 'failed') : ''}`}
+        >
+          {isTesting ? '⏳ Testing...' : (testResult ? (testResult.ok ? '✅ Connected' : '❌ Failed') : '🔌 Test Connection')}
+        </button>
+        {testResult && (
+          <div className={`connection-msg ${testResult.ok ? 'ok' : 'err'}`} style={{ fontSize: '0.75rem' }}>
+            {testResult.status}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -368,11 +407,23 @@ const SmartToolGrid = ({ toolconfigs, onChange }) => {
 // ─────────────────────────────────────────────
 // AGENT DOSSIER CARD
 // ─────────────────────────────────────────────
-const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
+const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate, onModelChange }) => {
   const toolconfigs = agent.toolconfigs || {};
   const isAlive = agent.status === 'Alive';
   const isSystem = agent.is_system || ['god', 'ceo'].includes(agent.agent_id);
   const equippedArray = Array.isArray(agent.equipped_tools) ? agent.equipped_tools : [];
+  const isGod = agent.agent_id === 'god' || agent.id === 'god';
+  const isHealing = agent.state === 'HEALING';
+  const [healLog, setHealLog] = useState([]);
+
+  useEffect(() => {
+    if (isGod) {
+      fetch(`${API_BASE}/api/heal-log`)
+        .then(r => r.json())
+        .then(data => setHealLog((data.heal_log || []).slice(0, 5)))
+        .catch(() => {});
+    }
+  }, [isGod]);
 
   const [testResult, setTestResult] = React.useState(null);
   const [isTesting, setIsTesting] = React.useState(false);
@@ -381,7 +432,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
     setIsTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('http://localhost:8000/api/models/test', {
+      const res = await fetch(`${API_BASE}/api/models/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: agent.model, api_key: agent.apiKeys || '' })
@@ -407,7 +458,7 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className={`dossier-card ${isSystem ? 'dossier-system' : ''}`}
+      className={`dossier-card ${isSystem ? 'dossier-system' : ''} ${isHealing ? 'dossier-healing' : ''}`}
     >
       {/* System agent crown accent bar */}
       {isSystem && <div className="dossier-system-bar" />}
@@ -434,7 +485,32 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       <div className="dossier-section">
         <div className="dossier-section-label"><span className="section-icon">🧠</span> BRAIN</div>
         <div className="brain-pill-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <div className="brain-pill">{getModelLabel(agent.model)}</div>
+          <select
+            className="brain-select"
+            value={agent.model || ''}
+            onChange={async (e) => {
+              const newModel = e.target.value;
+              try {
+                await fetch(`${API_BASE}/api/agents/${agent.agent_id || agent.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ brain_model: newModel }),
+                });
+                // Trigger a refresh by calling the prop
+                if (onModelChange) onModelChange();
+              } catch (err) {
+                console.error('Failed to update brain:', err);
+              }
+            }}
+          >
+            {MODEL_OPTIONS.map(group => (
+              <optgroup key={group.group} label={group.group}>
+                {group.models.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
           
           <button 
             onClick={handleTestBrain}
@@ -500,6 +576,33 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
         </div>
       </div>
 
+      {/* ── Heal History (God Agent only) ── */}
+      {isGod && healLog.length > 0 && (
+        <div className="dossier-section">
+          <div className="dossier-section-label"><span className="section-icon">🩺</span> HEAL HISTORY</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {healLog.map((h, i) => (
+              <div key={i} style={{
+                fontSize: '0.75rem',
+                padding: '6px 8px',
+                background: h.patch_applied ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${h.patch_applied ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                borderRadius: '6px',
+                color: '#d1d5db',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{h.patch_applied ? '✅' : '❌'} {h.root_cause || 'Unknown'}</span>
+                  <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>{h.model_used}</span>
+                </div>
+                <div style={{ color: '#6b7280', fontSize: '0.65rem', marginTop: '2px' }}>
+                  {h.timestamp?.split('T')[0]} | {h.crash_file || 'no file'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Footer ── */}
       <div className="dossier-footer">
         <button className="dossier-edit-btn" onClick={() => onEdit(agent)}>⚙️ Configure</button>
@@ -532,13 +635,14 @@ const AgentManager = ({ apiUsage = [] }) => {
   const [editingAgent, setEditingAgent] = useState(null);
   const dragControls = useDragControls();
   const [form, setForm] = useState(BLANK_FORM);
+  const [activeTab, setActiveTab] = useState('workforce');
   const [skillFetch, setSkillFetch] = useState({ source: '', loading: false, error: null });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
   const fetchAgents = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/agents');
+      const res = await fetch(`${API_BASE}/api/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
     } catch (e) { console.error('Failed to fetch agents:', e); }
@@ -548,7 +652,7 @@ const AgentManager = ({ apiUsage = [] }) => {
 
   const toggleAgent = async (agentId) => {
     try {
-      await fetch(`http://localhost:8000/api/agents/${agentId}/toggle`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/agents/${agentId}/toggle`, { method: 'POST' });
       fetchAgents();
     } catch (e) { console.error(e); }
   };
@@ -602,7 +706,7 @@ const AgentManager = ({ apiUsage = [] }) => {
     if (!skillFetch.source.trim()) return;
     setSkillFetch(s => ({ ...s, loading: true, error: null }));
     try {
-      const res = await fetch('http://localhost:8000/api/skills/extract', {
+      const res = await fetch(`${API_BASE}/api/skills/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: skillFetch.source.trim() }),
@@ -640,7 +744,7 @@ const AgentManager = ({ apiUsage = [] }) => {
     try {
       if (editingAgent) {
         // --- UPDATE existing agent ---
-        const res = await fetch(`http://localhost:8000/api/agents/${editingAgent.id}`, {
+        const res = await fetch(`${API_BASE}/api/agents/${editingAgent.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -648,7 +752,7 @@ const AgentManager = ({ apiUsage = [] }) => {
         if (!res.ok) throw new Error((await res.json()).detail || 'Update failed');
       } else {
         // --- CREATE new agent ---
-        const res = await fetch('http://localhost:8000/api/agents', {
+        const res = await fetch(`${API_BASE}/api/agents`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -667,7 +771,7 @@ const AgentManager = ({ apiUsage = [] }) => {
   const terminateAgent = async (agentId, agentName) => {
     if (!window.confirm(`⚠️ Terminate "${agentName}"? They will be removed from the roster permanently.`)) return;
     try {
-      await fetch(`http://localhost:8000/api/agents/${agentId}/terminate`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/agents/${agentId}/terminate`, { method: 'POST' });
       await fetchAgents();
     } catch (e) { console.error('Terminate failed:', e); }
   };
@@ -687,8 +791,8 @@ const AgentManager = ({ apiUsage = [] }) => {
         id: db.id || sa.agent_id,
         name: db.name || sa.agent_name,
         status: (db.state === 'IDLE' || !db.state) ? 'Alive' : db.state,
-        model: db.model || sa.brain_model,
-        apiKeys: db.apiKeys || sa.api_key || '',
+        model: db.brain_model || sa.brain_model,
+        apiKeys: db.api_key || sa.api_key || '',
         custom_skills: db.custom_skills || sa.custom_skills,
         toolconfigs: db.toolconfigs || sa.toolconfigs || {},
         is_system: true,
@@ -730,9 +834,18 @@ const AgentManager = ({ apiUsage = [] }) => {
           </p>
         </div>
         <div className="am-header-actions">
-          <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>
+          <div className="am-tabs">
+            <button className={`am-tab ${activeTab === 'workforce' ? 'active' : ''}`} onClick={() => setActiveTab('workforce')}>🤖 Workforce</button>
+            <button className={`am-tab ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => setActiveTab('tasks')}>📋 Task Queue</button>
+          </div>
+          {activeTab === 'workforce' && <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>}
         </div>
       </header>
+
+      {activeTab === 'tasks' ? (
+        <TaskQueue />
+      ) : (
+      <>
 
       {/* ── AGENT GRID ── */}
       <div className="am-grid">
@@ -750,6 +863,7 @@ const AgentManager = ({ apiUsage = [] }) => {
             onEdit={openEditModal}
             onToggle={toggleAgent}
             onTerminate={terminateAgent}
+            onModelChange={fetchAgents}
           />
         ))}
       </div>
@@ -832,7 +946,7 @@ const AgentManager = ({ apiUsage = [] }) => {
                              setIsTesting(true);
                              setTestResult(null);
                              try {
-                               const res = await fetch('http://localhost:8000/api/models/test', {
+                               const res = await fetch(`${API_BASE}/api/models/test`, {
                                  method: 'POST',
                                  headers: { 'Content-Type': 'application/json' },
                                  body: JSON.stringify({ model: form.brain_provider, api_key: form.brain_api_key || '' })
@@ -947,6 +1061,8 @@ const AgentManager = ({ apiUsage = [] }) => {
           </>
         )}
       </AnimatePresence>
+      </>
+      )}
     </div>
   );
 };

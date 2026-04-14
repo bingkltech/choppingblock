@@ -6,6 +6,7 @@ and real-time agent status for the Visual HQ dashboard.
 
 import sqlite3
 import os
+import json
 import logging
 from datetime import datetime, date
 from typing import Optional
@@ -51,9 +52,10 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "ledger.db")
 
 def get_connection() -> sqlite3.Connection:
     """Returns a connection to the ledger database with row factory enabled."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -196,6 +198,40 @@ def init_database() -> None:
         )
     """)
 
+    # --- Table 7: Heal Log (God Agent self-healing audit trail) ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Heal_Log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            crash_file TEXT,
+            root_cause TEXT,
+            patch_applied INTEGER DEFAULT 0,
+            rule_written INTEGER DEFAULT 0,
+            model_used TEXT,
+            raw_response TEXT
+        )
+    """)
+
+    # --- Table 8: Task Queue (Orchestrator work items) ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Task_Queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL UNIQUE,
+            task_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            assigned_agent TEXT,
+            status TEXT DEFAULT 'PENDING',
+            priority INTEGER DEFAULT 5,
+            input_data TEXT DEFAULT '{}',
+            output_data TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            retry_count INTEGER DEFAULT 0,
+            max_retries INTEGER DEFAULT 2
+        )
+    """)
+
     conn.commit()
     conn.close()
     logger.info("📦 Ledger database initialized at %s", DB_PATH)
@@ -296,7 +332,7 @@ def seed_default_agents() -> None:
     conn = get_connection()
     now = datetime.now().isoformat()
     agents = [
-        ("ceo",    "CEO Agent",               "tier1", "claude-3.5-sonnet",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
+        ("ceo",    "CEO Agent",               "tier1", "claude-sonnet-4-20250514",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
         ("god",    "God Agent",               "tier1", "claude-3.5-sonnet",  "System Overseer",           "System monitoring, self-healing, meta-cognition",     '["bash"]'),
         ("jules_1","Antigravity (Jules 1)",   "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration, Code Review", '["jules","github","bash"]'),
         ("jules_2","Cloud Worker (Jules 2)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration",             '["jules","github","bash"]'),
@@ -400,6 +436,56 @@ def terminate_agent(agent_id: str) -> None:
     conn.commit()
     conn.close()
     logger.info("🔴 Agent terminated: %s", agent_id)
+
+
+def get_god_brain() -> str:
+    """Returns the God Agent's configured brain_model from the database.
+    Falls back to 'qwen3.5:9b' if not found."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT brain_model FROM Agent_Status WHERE agent_id = 'god'"
+    ).fetchone()
+    conn.close()
+    if row and row["brain_model"]:
+        return row["brain_model"]
+    return "qwen3.5:9b"
+
+
+def log_heal_action(
+    crash_file: str = None,
+    root_cause: str = None,
+    patch_applied: bool = False,
+    rule_written: bool = False,
+    model_used: str = None,
+    raw_response: str = None,
+) -> None:
+    """Record a God Agent healing action to the Heal_Log table."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO Heal_Log (timestamp, crash_file, root_cause, patch_applied, rule_written, model_used, raw_response) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            datetime.now().isoformat(),
+            crash_file,
+            root_cause,
+            1 if patch_applied else 0,
+            1 if rule_written else 0,
+            model_used,
+            (raw_response or "")[:2000],  # cap raw response size
+        ),
+    )
+    conn.commit()
+    conn.close()
+    logger.info("🩺 Heal action logged: %s", root_cause or "unknown")
+
+
+def get_heal_log(limit: int = 20) -> list[dict]:
+    """Returns the most recent healing actions."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Heal_Log ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def update_agent_status(agent_id: str, state: str, current_task: str = None, health_pct: float = None) -> None:
@@ -666,6 +752,211 @@ def get_all_jules_sessions(limit: int = 50) -> list[dict]:
     conn.close()
     return [dict(r) for r in rows]
 
+
+# ==========================================
+# 📋 TASK QUEUE HELPERS
+# ==========================================
+
+def create_task(task_id: str, task_type: str, description: str,
+                priority: int = 5, input_data: str = '{}') -> dict:
+    """Create a new task in the queue. Returns the created task."""
+    conn = get_connection()
+    try:
+        now = datetime.now().isoformat()
+        conn.execute(
+            """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (task_id, task_type, description, priority, input_data, now)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
+        logger.info("📋 Task created: %s [%s] priority=%d", task_id, task_type, priority)
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def claim_task(task_id: str, agent_id: str) -> bool:
+    """Assign a PENDING task to an agent. Returns True if claimed."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'ASSIGNED', assigned_agent = ?, started_at = ?
+           WHERE task_id = ? AND status = 'PENDING'""",
+        (agent_id, now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.info("📋 Task %s claimed by %s", task_id, agent_id)
+    return success
+
+
+def start_task(task_id: str) -> bool:
+    """Move an ASSIGNED task to RUNNING."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'RUNNING', started_at = ?
+           WHERE task_id = ? AND status = 'ASSIGNED'""",
+        (now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def complete_task(task_id: str, output_data: str = '{}') -> bool:
+    """Mark a task as DONE with optional output."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'DONE', output_data = ?, completed_at = ?
+           WHERE task_id = ? AND status IN ('RUNNING', 'ASSIGNED')""",
+        (output_data, now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.info("📋 Task %s completed", task_id)
+    return success
+
+
+def fail_task(task_id: str, error: str = '') -> bool:
+    """Mark a task as FAILED. Increments retry_count."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'FAILED', output_data = ?, completed_at = ?,
+           retry_count = retry_count + 1
+           WHERE task_id = ? AND status IN ('RUNNING', 'ASSIGNED')""",
+        (json.dumps({"error": error}), now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if success:
+        logger.warning("📋 Task %s failed: %s", task_id, error[:100])
+    return success
+
+
+def retry_task(task_id: str) -> bool:
+    """Reset a FAILED task back to PENDING if under max_retries."""
+    conn = get_connection()
+    row = conn.execute("SELECT retry_count, max_retries FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
+    if not row or row['retry_count'] >= row['max_retries']:
+        conn.close()
+        return False
+    conn.execute(
+        """UPDATE Task_Queue SET status = 'PENDING', assigned_agent = NULL,
+           started_at = NULL, completed_at = NULL
+           WHERE task_id = ?""",
+        (task_id,)
+    )
+    conn.commit()
+    conn.close()
+    logger.info("📋 Task %s retrying (attempt %d)", task_id, row['retry_count'] + 1)
+    return True
+
+
+def get_pending_tasks(limit: int = 20) -> list[dict]:
+    """Get tasks waiting to be assigned, ordered by priority then creation time."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue WHERE status = 'PENDING' ORDER BY priority ASC, created_at ASC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_running_tasks() -> list[dict]:
+    """Get all currently running tasks."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue WHERE status IN ('ASSIGNED', 'RUNNING') ORDER BY started_at ASC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_tasks(limit: int = 50) -> list[dict]:
+    """Get recent tasks for the dashboard."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM Task_Queue ORDER BY created_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def cancel_task(task_id: str) -> bool:
+    """Cancel a PENDING or ASSIGNED task."""
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        """UPDATE Task_Queue SET status = 'CANCELLED', completed_at = ?
+           WHERE task_id = ? AND status IN ('PENDING', 'ASSIGNED')""",
+        (now, task_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def auto_configure_github_cli() -> None:
+    """Detects authenticated GitHub CLI user and seeds the God/CEO agents if unconfigured."""
+    import subprocess
+    import json
+    
+    try:
+        # Check if gh CLI is installed and authenticated
+        token_out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=5)
+        user_out = subprocess.run(["gh", "api", "user"], capture_output=True, text=True, timeout=5)
+        
+        if token_out.returncode != 0 or user_out.returncode != 0:
+            return  # CLI not authenticated or not installed
+            
+        token = token_out.stdout.strip()
+        user_data = json.loads(user_out.stdout)
+        username = user_data.get("login", "")
+        
+        if not token or not username:
+            return
+            
+        conn = get_connection()
+        for agent_id in ("god", "ceo"):
+            row = conn.execute("SELECT toolconfigs FROM Agent_Status WHERE agent_id = ?", (agent_id,)).fetchone()
+            if row:
+                raw_cfg = row["toolconfigs"]
+                if raw_cfg:
+                    decrypted = decrypt_val(raw_cfg)
+                    try:
+                        cfg = json.loads(decrypted)
+                    except json.JSONDecodeError:
+                        cfg = {}
+                else:
+                    cfg = {}
+                    
+                # If github is not configured, auto-configure it
+                if "github" not in cfg or "pat" not in cfg["github"]:
+                    cfg["github"] = {"pat": token, "username": username}
+                    encrypted_cfg = encrypt_val(json.dumps(cfg))
+                    conn.execute(
+                        "UPDATE Agent_Status SET toolconfigs = ? WHERE agent_id = ?",
+                        (encrypted_cfg, agent_id)
+                    )
+                    logger.info("🔐 Auto-connected GitHub CLI to %s Agent toolconfigs", agent_id.upper())
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("Failed to auto-configure github cli: %s", str(e))
 
 # ==========================================
 # 🚀 BOOTSTRAP

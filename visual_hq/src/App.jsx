@@ -8,6 +8,7 @@ import AlertsPanel from './components/AlertsPanel';
 import ActivityFeed from './components/ActivityFeed';
 import FleetUtilization from './components/FleetUtilization';
 import AgentManager from './components/AgentManager';
+import Settings from './components/Settings';
 import { useState } from 'react';
 
 /**
@@ -41,6 +42,8 @@ export default function App() {
         <div style={{ gridArea: 'main', overflowY: 'auto', width: '100%', height: '100%' }}>
           <AgentManager apiUsage={apiUsage} />
         </div>
+      ) : activeView === 'Settings' ? (
+        <Settings />
       ) : (
         <main className="main-content">
           <ProjectCards projects={projects} />

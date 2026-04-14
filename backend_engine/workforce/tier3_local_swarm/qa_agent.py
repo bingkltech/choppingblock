@@ -3,9 +3,12 @@
 Pulls PRs, runs code in Docker sandboxes, sends pass/fail results.
 """
 
+import os
+import sys
 import logging
 
-from ...anatomy.agent_core import BaseAgent, AgentState
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from anatomy.agent_core import BaseAgent, AgentState
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +51,8 @@ class QAAgent(BaseAgent):
         """
         Pull a PR, run it in Docker, return pass/fail with raw output.
         """
-        from ...caveman_tools.primitive_bash import run_bash
-        from ...caveman_tools.primitive_docker import run_tests_in_sandbox
+        from caveman_tools.primitive_bash import run_bash
+        from caveman_tools.primitive_docker import run_tests_in_sandbox
 
         self.set_state(AgentState.INGESTING, f"Pulling PR #{pr_number}")
 

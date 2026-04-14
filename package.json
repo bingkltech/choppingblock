@@ -1,0 +1,14 @@
+{
+  "name": "choppingblock-root",
+  "version": "1.0.0",
+  "description": "Root runner for ChoppingBlock",
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "python god_process.py",
+    "frontend": "cd visual_hq && npm run dev",
+    "install-all": "npm install && cd visual_hq && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

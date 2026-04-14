@@ -24,6 +24,7 @@ class AgentState(str, Enum):
     SUCCESS = "SUCCESS"         # 🟢 Green — task complete
     ERROR = "ERROR"             # 🔴 Red — crashed or failed
     HEALING = "HEALING"         # 💛 Gold — self-healing in progress
+    STALE = "STALE"             # ⚠️  Amber — heartbeat gone silent
 
 
 class BaseAgent:
@@ -154,6 +155,18 @@ class BaseAgent:
         self.brain = new_model
         logger.info("🧠 [%s] Brain swapped: %s → %s", self.agent_id, old, new_model)
         self.broadcast_heartbeat()
+
+    # ------------------------------------------
+    # Health Monitoring
+    # ------------------------------------------
+
+    def is_stale(self, threshold_seconds: int = 120) -> bool:
+        """Returns True if last_heartbeat is older than threshold_seconds."""
+        try:
+            last = datetime.fromisoformat(self.last_heartbeat)
+            return (datetime.now() - last).total_seconds() > threshold_seconds
+        except (ValueError, TypeError):
+            return True  # If we can't parse the timestamp, assume stale
 
     # ------------------------------------------
     # Serialization
