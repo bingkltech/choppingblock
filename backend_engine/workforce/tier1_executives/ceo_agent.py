@@ -13,7 +13,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from anatomy.agent_core import BaseAgent, AgentState
 from anatomy.brain_dispatcher import query_brain
-from database.db_manager import get_god_brain  # reuses same DB schema for agent brains
+from database.db_manager import get_agent
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,9 @@ class CEOAgent(BaseAgent):
     def _load_brain(self) -> str:
         """Load the CEO's brain model from the database (UI-configurable)."""
         try:
-            db_model = get_god_brain("ceo")  # Same function, different agent_id
-            if db_model:
+            agent_data = get_agent("ceo")
+            if agent_data and agent_data.get("brain_model"):
+                db_model = agent_data["brain_model"]
                 self.brain = db_model
                 return db_model
         except Exception:

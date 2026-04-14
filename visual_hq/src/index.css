@@ -2906,3 +2906,28 @@ body::before {
   color: var(--text-primary);
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
+
+/* Agent Dossier Inline Select */
+.brain-select {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-cyan);
+  border-radius: var(--radius-xs);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+.brain-select:hover, .brain-select:focus {
+  border-color: var(--accent-teal);
+  background: rgba(15, 23, 42, 0.9);
+}
+.brain-select option, .brain-select optgroup {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}

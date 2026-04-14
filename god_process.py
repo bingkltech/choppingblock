@@ -24,8 +24,8 @@ if sys.stdout.encoding != 'utf-8':
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend_engine'))
 
 
-from workforce.tier1_executives.god_agent import GodAgent
-from config import GOD_MAX_RESTARTS, GOD_RESTART_COOLDOWN, GOD_CRASH_WINDOW, GOD_HEALTH_POLL_INTERVAL, GOD_STALE_THRESHOLD, BACKEND_URL
+from backend_engine.workforce.tier1_executives.god_agent import GodAgent
+from backend_engine.config import GOD_MAX_RESTARTS, GOD_RESTART_COOLDOWN, GOD_CRASH_WINDOW, GOD_HEALTH_POLL_INTERVAL, GOD_STALE_THRESHOLD, BACKEND_URL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,31 +47,56 @@ CRASH_WINDOW = GOD_CRASH_WINDOW
 
 def run_backend() -> int:
     """Launches the backend as a subprocess and monitors it."""
-    logger.info("🚀 Launching backend: %s", BACKEND_ENTRY)
+    logger.info("Launching backend: %s", BACKEND_ENTRY)
+
+    # Force UTF-8 I/O on the child process to handle emoji in log output
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
 
     process = subprocess.Popen(
-        [sys.executable, BACKEND_ENTRY],
+        [sys.executable, "-u", BACKEND_ENTRY],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,   # Merge stderr into stdout to prevent buffer deadlock
         text=True,
-        cwd=os.path.join(os.path.dirname(__file__), "backend_engine"),
+        encoding="utf-8",
+        errors="replace",           # Never crash on un-encodable chars
+        cwd=os.path.dirname(os.path.abspath(__file__)),  # Run from project root
+        env=env,
     )
 
-    # Stream stdout in real-time
+    # Accumulate stderr-like lines for crash detection
+    recent_lines: list[str] = []
+
+    # Stream merged output in real-time
     try:
         while True:
             line = process.stdout.readline()
             if line:
-                print(f"[BACKEND] {line.strip()}")
-            
+                stripped = line.strip()
+                try:
+                    print(f"[BACKEND] {stripped}")
+                except UnicodeEncodeError:
+                    print(f"[BACKEND] {stripped.encode('ascii', errors='replace').decode()}")
+                # Keep a rolling buffer of recent lines for crash analysis
+                recent_lines.append(stripped)
+                if len(recent_lines) > 200:
+                    recent_lines.pop(0)
+
             # Check if process has terminated
             retcode = process.poll()
             if retcode is not None:
-                # Process has exited — capture remaining stderr
-                remaining_stderr = process.stderr.read()
-                if remaining_stderr:
-                    logger.error("🔴 CRASH DETECTED:\n%s", remaining_stderr)
-                    _log_crash(remaining_stderr)
+                # Drain any remaining output
+                for remaining in process.stdout:
+                    stripped = remaining.strip()
+                    if stripped:
+                        print(f"[BACKEND] {stripped}")
+                        recent_lines.append(stripped)
+
+                if retcode != 0 and recent_lines:
+                    crash_text = "\n".join(recent_lines[-50:])
+                    logger.error("🔴 CRASH DETECTED:\n%s", crash_text)
+                    _log_crash(crash_text)
                 return retcode
 
     except KeyboardInterrupt:
@@ -116,6 +141,19 @@ def _health_poll_loop(god: GodAgent) -> None:
     import json as _json
     while True:
         time.sleep(GOD_HEALTH_POLL_INTERVAL)
+        try:
+            # ── Self-heartbeat: keep God Agent marked ALIVE in the dashboard ──
+            hb_data = _json.dumps({"state": "IDLE", "current_task": "Watching"}).encode()
+            hb_req = urllib.request.Request(
+                f"{BACKEND_URL}/api/agents/god",
+                data=hb_data,
+                headers={"Content-Type": "application/json"},
+                method="PATCH",
+            )
+            urllib.request.urlopen(hb_req, timeout=5)
+        except Exception:
+            pass  # Backend may still be starting up
+
         try:
             resp = urllib.request.urlopen(f"{BACKEND_URL}/api/agents", timeout=5)
             data = _json.loads(resp.read().decode())

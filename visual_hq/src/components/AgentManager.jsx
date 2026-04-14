@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 import TaskQueue from './TaskQueue';
 
@@ -269,6 +269,26 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
     );
   }
 
+  const [testResult, setTestResult] = useState(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTestTool = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/tools/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool_id: toolId, config }),
+      });
+      setTestResult(await res.json());
+    } catch {
+      setTestResult({ ok: false, status: 'Backend unreachable' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   return (
     <div className="tool-cfg-panel">
       {def.fields.map(field => (
@@ -287,6 +307,21 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
           />
         </div>
       ))}
+      <div style={{ marginTop: 12, display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <button 
+          type="button"
+          onClick={handleTestTool}
+          disabled={isTesting || Object.keys(config || {}).length === 0}
+          className={`btn-test-connection ${testResult ? (testResult.ok ? 'connected' : 'failed') : ''}`}
+        >
+          {isTesting ? '⏳ Testing...' : (testResult ? (testResult.ok ? '✅ Connected' : '❌ Failed') : '🔌 Test Connection')}
+        </button>
+        {testResult && (
+          <div className={`connection-msg ${testResult.ok ? 'ok' : 'err'}`} style={{ fontSize: '0.75rem' }}>
+            {testResult.status}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -372,7 +407,7 @@ const SmartToolGrid = ({ toolconfigs, onChange }) => {
 // ─────────────────────────────────────────────
 // AGENT DOSSIER CARD
 // ─────────────────────────────────────────────
-const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
+const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate, onModelChange }) => {
   const toolconfigs = agent.toolconfigs || {};
   const isAlive = agent.status === 'Alive';
   const isSystem = agent.is_system || ['god', 'ceo'].includes(agent.agent_id);
@@ -450,7 +485,32 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate }) => {
       <div className="dossier-section">
         <div className="dossier-section-label"><span className="section-icon">🧠</span> BRAIN</div>
         <div className="brain-pill-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <div className="brain-pill">{getModelLabel(agent.model)}</div>
+          <select
+            className="brain-select"
+            value={agent.model || ''}
+            onChange={async (e) => {
+              const newModel = e.target.value;
+              try {
+                await fetch(`${API_BASE}/api/agents/${agent.agent_id || agent.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ brain_model: newModel }),
+                });
+                // Trigger a refresh by calling the prop
+                if (onModelChange) onModelChange();
+              } catch (err) {
+                console.error('Failed to update brain:', err);
+              }
+            }}
+          >
+            {MODEL_OPTIONS.map(group => (
+              <optgroup key={group.group} label={group.group}>
+                {group.models.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
           
           <button 
             onClick={handleTestBrain}
@@ -731,8 +791,8 @@ const AgentManager = ({ apiUsage = [] }) => {
         id: db.id || sa.agent_id,
         name: db.name || sa.agent_name,
         status: (db.state === 'IDLE' || !db.state) ? 'Alive' : db.state,
-        model: db.model || sa.brain_model,
-        apiKeys: db.apiKeys || sa.api_key || '',
+        model: db.brain_model || sa.brain_model,
+        apiKeys: db.api_key || sa.api_key || '',
         custom_skills: db.custom_skills || sa.custom_skills,
         toolconfigs: db.toolconfigs || sa.toolconfigs || {},
         is_system: true,
@@ -803,6 +863,7 @@ const AgentManager = ({ apiUsage = [] }) => {
             onEdit={openEditModal}
             onToggle={toggleAgent}
             onTerminate={terminateAgent}
+            onModelChange={fetchAgents}
           />
         ))}
       </div>

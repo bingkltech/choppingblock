@@ -332,7 +332,7 @@ def seed_default_agents() -> None:
     conn = get_connection()
     now = datetime.now().isoformat()
     agents = [
-        ("ceo",    "CEO Agent",               "tier1", "claude-3.5-sonnet",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
+        ("ceo",    "CEO Agent",               "tier1", "claude-sonnet-4-20250514",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
         ("god",    "God Agent",               "tier1", "claude-3.5-sonnet",  "System Overseer",           "System monitoring, self-healing, meta-cognition",     '["bash"]'),
         ("jules_1","Antigravity (Jules 1)",   "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration, Code Review", '["jules","github","bash"]'),
         ("jules_2","Cloud Worker (Jules 2)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration",             '["jules","github","bash"]'),
@@ -908,6 +908,55 @@ def cancel_task(task_id: str) -> bool:
     conn.close()
     return success
 
+
+def auto_configure_github_cli() -> None:
+    """Detects authenticated GitHub CLI user and seeds the God/CEO agents if unconfigured."""
+    import subprocess
+    import json
+    
+    try:
+        # Check if gh CLI is installed and authenticated
+        token_out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=5)
+        user_out = subprocess.run(["gh", "api", "user"], capture_output=True, text=True, timeout=5)
+        
+        if token_out.returncode != 0 or user_out.returncode != 0:
+            return  # CLI not authenticated or not installed
+            
+        token = token_out.stdout.strip()
+        user_data = json.loads(user_out.stdout)
+        username = user_data.get("login", "")
+        
+        if not token or not username:
+            return
+            
+        conn = get_connection()
+        for agent_id in ("god", "ceo"):
+            row = conn.execute("SELECT toolconfigs FROM Agent_Status WHERE agent_id = ?", (agent_id,)).fetchone()
+            if row:
+                raw_cfg = row["toolconfigs"]
+                if raw_cfg:
+                    decrypted = decrypt_val(raw_cfg)
+                    try:
+                        cfg = json.loads(decrypted)
+                    except json.JSONDecodeError:
+                        cfg = {}
+                else:
+                    cfg = {}
+                    
+                # If github is not configured, auto-configure it
+                if "github" not in cfg or "pat" not in cfg["github"]:
+                    cfg["github"] = {"pat": token, "username": username}
+                    encrypted_cfg = encrypt_val(json.dumps(cfg))
+                    conn.execute(
+                        "UPDATE Agent_Status SET toolconfigs = ? WHERE agent_id = ?",
+                        (encrypted_cfg, agent_id)
+                    )
+                    logger.info("🔐 Auto-connected GitHub CLI to %s Agent toolconfigs", agent_id.upper())
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("Failed to auto-configure github cli: %s", str(e))
 
 # ==========================================
 # 🚀 BOOTSTRAP

@@ -63,6 +63,10 @@ async def lifespan(app: FastAPI):
     init_database()
     seed_jules_accounts()
     seed_default_agents()
+    
+    # Auto-connect system GitHub CLI if available
+    from database.db_manager import auto_configure_github_cli
+    auto_configure_github_cli()
 
     # Seed some demo projects for the dashboard
     demo_projects = [
@@ -612,6 +616,75 @@ async def api_test_brain(body: TestBrainBody):
 
 
 # ==========================================
+# 🛠️ TOOL CONNECTION TEST
+# ==========================================
+
+class TestToolBody(BaseModel):
+    tool_id: str
+    config: dict
+
+@app.post("/api/tools/test")
+async def api_test_tool(body: TestToolBody):
+    import httpx
+    tool = body.tool_id
+    cfg = body.config
+    
+    if tool == "github":
+        if not cfg.get("pat"):
+            return {"ok": False, "status": "Missing PAT"}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get("https://api.github.com/user", headers={"Authorization": f"token {cfg['pat']}"})
+            if r.status_code == 200:
+                return {"ok": True, "status": f"Connected as {r.json().get('login')}"}
+            return {"ok": False, "status": f"GitHub Error: {r.status_code}"}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "jules":
+        if not cfg.get("api_key"):
+            return {"ok": False, "status": "Missing API Key"}
+        try:
+            from backend_engine.caveman_tools.primitive_jules import list_sessions
+            res = list_sessions(cfg["api_key"], limit=1)
+            if res.get("success"):
+                return {"ok": True, "status": "Jules API Connected"}
+            return {"ok": False, "status": res.get("error", "Unknown error")}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "telegram":
+        if not cfg.get("bot_token"):
+            return {"ok": False, "status": "Missing Bot Token"}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(f"https://api.telegram.org/bot{cfg['bot_token']}/getMe")
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("ok"):
+                    return {"ok": True, "status": f"Connected to @{data['result'].get('username')}"}
+            return {"ok": False, "status": "Invalid Telegram Token"}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "email":
+        host = cfg.get("smtp_host")
+        port = cfg.get("smtp_port")
+        if not host or not port:
+            return {"ok": False, "status": "Missing Host or Port"}
+        try:
+            import smtplib
+            # Simple connection check, no auth performed to avoid locking accounts with bad passes repeatedly
+            server = smtplib.SMTP(host, int(port), timeout=3)
+            server.ehlo()
+            server.quit()
+            return {"ok": True, "status": "SMTP Server Reachable"}
+        except Exception as e:
+            return {"ok": False, "status": f"SMTP Error: {str(e)}"}
+
+    return {"ok": False, "status": "Testing not implemented for this tool"}
+
+# ==========================================
 # 🧠 SKILLS EXTRACTOR (skill-seekers)
 # ==========================================
 
@@ -719,6 +792,5 @@ if __name__ == "__main__":
     host = os.getenv("BACKEND_HOST", "0.0.0.0")
     port = int(os.getenv("BACKEND_PORT", "8000"))
 
-    logger.info("🚀 Starting Paperclip Reborn on %s:%d", host, port)
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("main:app", host=host, port=port)
 
