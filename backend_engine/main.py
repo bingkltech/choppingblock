@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     init_database()
     seed_jules_accounts()
     seed_default_agents()
-    
+
     # Auto-connect system GitHub CLI if available
     from database.db_manager import auto_configure_github_cli
     auto_configure_github_cli()
@@ -261,7 +261,7 @@ class EnvUpdateRequest(BaseModel):
 async def update_env_settings(body: EnvUpdateRequest):
     """Updates global API keys in .env and os.environ."""
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    
+
     # Update live env
     for k, v in body.keys.items():
         if k in GLOBAL_KEYS and v:  # Only update allowed keys if provided
@@ -628,7 +628,7 @@ async def api_test_tool(body: TestToolBody):
     import httpx
     tool = body.tool_id
     cfg = body.config
-    
+
     if tool == "github":
         if not cfg.get("pat"):
             return {"ok": False, "status": "Missing PAT"}

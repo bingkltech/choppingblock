@@ -164,4 +164,3 @@ if __name__ == "__main__":
     ceo = CEOAgent()
     content = ceo.write_architecture("Build a REST API for user management with CRUD operations.")
     print(content)
-
