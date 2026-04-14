@@ -26,7 +26,7 @@ class TestTaskQueue(unittest.TestCase):
     def setUpClass(cls):
         """Create test DB once for all tests."""
         cls.original_db_path = db_manager.DB_PATH
-        db_manager.DB_PATH = os.path.join(os.path.dirname(db_manager.DB_PATH), "test_task_queue.db")
+        db_manager.DB_PATH = os.path.join(os.path.dirname(db_manager.__file__), "test_task_queue.db")
         # Remove stale test DB
         for ext in ['', '-wal', '-shm']:
             p = db_manager.DB_PATH + ext

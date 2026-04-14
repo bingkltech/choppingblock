@@ -17,7 +17,7 @@ class TestDBSecurity(unittest.TestCase):
     def setUp(self):
         # Use a temporary database for testing
         self.original_db_path = db_manager.DB_PATH
-        db_manager.DB_PATH = "backend_engine/database/test_ledger.db"
+        db_manager.DB_PATH = os.path.join(os.path.dirname(db_manager.__file__), "test_ledger.db")
         if os.path.exists(db_manager.DB_PATH):
             os.remove(db_manager.DB_PATH)
         init_database()
