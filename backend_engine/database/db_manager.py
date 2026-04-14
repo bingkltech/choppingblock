@@ -306,6 +306,7 @@ def seed_default_agents() -> None:
         ("qa",     "QA Agent",                "tier3", "ollama:llama3",      "QA Engineer",               "Testing, Code Review, Linting, Bug Reproduction",     '["docker","bash"]'),
         ("ops",    "Ops Agent",               "tier3", "ollama:qwen2.5-coder","DevOps Engineer",          "CI/CD, GitHub Actions, Docker, Linux Administration", '["github","bash","docker"]'),
     ]
+    agent_records = []
     for (aid, name, tier, brain, role, skills, tools) in agents:
         # Special case: God Agent config from user requirements
         if aid == "god":
@@ -313,21 +314,15 @@ def seed_default_agents() -> None:
             skills = "System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect"
             tools = '["bash", "github", "jules", "browser", "docker", "antigravity"]'
             
-            conn.execute(
-                """INSERT OR IGNORE INTO Agent_Status
-                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
-                    toolconfigs, state, hired_at, last_heartbeat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
-                (aid, name, tier, brain, role, skills, tools, now, now)
-            )
-        else:
-            conn.execute(
-                """INSERT OR IGNORE INTO Agent_Status
-                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
-                    toolconfigs, state, hired_at, last_heartbeat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
-                (aid, name, tier, brain, role, skills, tools, now, now)
-            )
+        agent_records.append((aid, name, tier, brain, role, skills, tools, now, now))
+
+    conn.executemany(
+        """INSERT OR IGNORE INTO Agent_Status
+           (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
+            toolconfigs, state, hired_at, last_heartbeat)
+           VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
+        agent_records
+    )
     conn.commit()
     conn.close()
     logger.info("🤖 Seeded default agents.")
