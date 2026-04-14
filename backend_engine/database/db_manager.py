@@ -47,7 +47,13 @@ def decrypt_val(val: str) -> str:
     except Exception:
         return val
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "ledger.db")
+import os
+
+DB_DIR = os.path.dirname(__file__)
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR)
+
+DB_PATH = os.path.join(DB_DIR, "ledger.db")
 
 
 def get_connection() -> sqlite3.Connection:

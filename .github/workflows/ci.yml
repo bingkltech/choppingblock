@@ -25,7 +25,9 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend_engine
-        run: python -m pytest tests/ -v --tb=short
+        run: |
+          mkdir -p database
+          python -m pytest tests/ -v --tb=short
 
       - name: Validate Python compilation
         run: |
