@@ -913,22 +913,22 @@ def auto_configure_github_cli() -> None:
     """Detects authenticated GitHub CLI user and seeds the God/CEO agents if unconfigured."""
     import subprocess
     import json
-
+    
     try:
         # Check if gh CLI is installed and authenticated
         token_out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=5)
         user_out = subprocess.run(["gh", "api", "user"], capture_output=True, text=True, timeout=5)
-
+        
         if token_out.returncode != 0 or user_out.returncode != 0:
             return  # CLI not authenticated or not installed
-
+            
         token = token_out.stdout.strip()
         user_data = json.loads(user_out.stdout)
         username = user_data.get("login", "")
-
+        
         if not token or not username:
             return
-
+            
         conn = get_connection()
         for agent_id in ("god", "ceo"):
             row = conn.execute("SELECT toolconfigs FROM Agent_Status WHERE agent_id = ?", (agent_id,)).fetchone()
@@ -942,7 +942,7 @@ def auto_configure_github_cli() -> None:
                         cfg = {}
                 else:
                     cfg = {}
-
+                    
                 # If github is not configured, auto-configure it
                 if "github" not in cfg or "pat" not in cfg["github"]:
                     cfg["github"] = {"pat": token, "username": username}
@@ -952,7 +952,7 @@ def auto_configure_github_cli() -> None:
                         (encrypted_cfg, agent_id)
                     )
                     logger.info("🔐 Auto-connected GitHub CLI to %s Agent toolconfigs", agent_id.upper())
-
+        
         conn.commit()
         conn.close()
     except Exception as e:

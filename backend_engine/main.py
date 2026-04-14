@@ -28,8 +28,12 @@ from database.db_manager import (
     get_all_projects, upsert_project,
     get_unresolved_alerts, create_alert, resolve_alert,
     get_all_jules_sessions,
+    get_heal_log,
+    create_task, get_all_tasks, get_pending_tasks, get_running_tasks,
+    cancel_task as db_cancel_task,
 )
 from anatomy.shift_manager import ShiftManager, ShiftMode
+from anatomy.orchestrator import Orchestrator
 from routers import admin_router
 from routers import jules_router_api
 
@@ -47,6 +51,7 @@ logger = logging.getLogger("paperclip.main")
 # ==========================================
 shift_manager = ShiftManager(default_mode=ShiftMode.BOSS)
 connected_clients: list[WebSocket] = []
+orchestrator = Orchestrator()
 
 # ==========================================
 # 🚀 LIFESPAN (startup/shutdown)
@@ -58,6 +63,10 @@ async def lifespan(app: FastAPI):
     init_database()
     seed_jules_accounts()
     seed_default_agents()
+    
+    # Auto-connect system GitHub CLI if available
+    from database.db_manager import auto_configure_github_cli
+    auto_configure_github_cli()
 
     # Seed some demo projects for the dashboard
     demo_projects = [
@@ -72,9 +81,15 @@ async def lifespan(app: FastAPI):
     log_activity("system", "BOOT", "Paperclip Reborn backend initialized successfully.")
     logger.info("✅ Backend ready. WebSocket at /ws/heartbeat")
 
+    # Start the Orchestrator as a background task
+    orch_task = asyncio.create_task(orchestrator.start())
+    logger.info("🎯 Orchestrator background loop started")
+
     yield
 
     # Shutdown
+    await orchestrator.stop()
+    orch_task.cancel()
     logger.info("🛑 Paperclip Reborn — Backend Engine shutting down.")
 
 
@@ -221,6 +236,67 @@ def _compute_fleet_stats() -> dict:
 async def root():
     return {"name": "📎 Paperclip Reborn", "status": "online", "version": "0.1.0"}
 
+# --- Settings ---
+
+GLOBAL_KEYS = ["OPENAI_API_KEY", "CLAUDE_API_KEY", "GEMINI_API_KEY", "GITHUB_PAT", "JULES_API_KEY"]
+
+@app.get("/api/settings/env")
+async def get_env_settings():
+    """Returns obscured values for global API keys."""
+    settings = {}
+    for key in GLOBAL_KEYS:
+        val = os.getenv(key, "")
+        if len(val) > 8:
+            settings[key] = f"{val[:4]}...{val[-4:]}"
+        elif val:
+            settings[key] = "***"
+        else:
+            settings[key] = ""
+    return settings
+
+class EnvUpdateRequest(BaseModel):
+    keys: dict
+
+@app.post("/api/settings/env")
+async def update_env_settings(body: EnvUpdateRequest):
+    """Updates global API keys in .env and os.environ."""
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    
+    # Update live env
+    for k, v in body.keys.items():
+        if k in GLOBAL_KEYS and v:  # Only update allowed keys if provided
+            os.environ[k] = v.strip()
+
+    # Read current .env
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    # Modify lines
+    for k, v in body.keys.items():
+        if k not in GLOBAL_KEYS or not v:
+            continue
+        v = v.strip()
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{k}="):
+                lines[i] = f"{k}={v}\n"
+                updated = True
+                break
+        if not updated:
+            # Insert at the end
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(f"{k}={v}\n")
+
+    # Write back
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    return {"success": True}
+
+
 
 # --- Agents ---
 
@@ -258,6 +334,82 @@ async def api_get_agent(agent_id: str):
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
 
+
+# --- Heal Log ---
+
+@app.get("/api/heal-log")
+async def api_get_heal_log():
+    """Returns the last 20 God Agent healing actions."""
+    return {"heal_log": get_heal_log(20)}
+
+
+@app.post("/api/god/heal")
+async def api_trigger_heal(body: dict):
+    """Manually trigger a God Agent heal cycle for testing."""
+    traceback_text = body.get("traceback", "")
+    if not traceback_text:
+        raise HTTPException(status_code=400, detail="Missing 'traceback' in body")
+    from workforce.tier1_executives.god_agent import GodAgent
+    god = GodAgent()
+    result = god.heal(traceback_text, auto_apply=False)
+    log_activity("god", "HEAL_CYCLE", f"Manual heal: {result.get('root_cause', 'unknown')}")
+    return result
+
+
+# --- Task Queue ---
+
+class TaskCreateBody(BaseModel):
+    task_type: str       # WRITE_ARCH, CODE, TEST_PR, MERGE_PR, HEAL, GENERAL
+    description: str
+    priority: int = 5    # 1=highest, 10=lowest
+    input_data: dict = {}
+
+@app.post("/api/tasks")
+async def api_create_task(body: TaskCreateBody):
+    """Create a new task in the queue."""
+    import uuid
+    task_id = f"task_{uuid.uuid4().hex[:8]}"
+    task = create_task(
+        task_id=task_id,
+        task_type=body.task_type,
+        description=body.description,
+        priority=body.priority,
+        input_data=json.dumps(body.input_data),
+    )
+    log_activity("system", "TASK_CREATED", f"New task: {task_id} ({body.task_type})")
+    return task
+
+@app.get("/api/tasks")
+async def api_list_tasks(status: str = None, limit: int = 50):
+    """List tasks, optionally filtered by status."""
+    if status == "pending":
+        return {"tasks": get_pending_tasks(limit)}
+    elif status == "running":
+        return {"tasks": get_running_tasks()}
+    else:
+        return {"tasks": get_all_tasks(limit)}
+
+@app.get("/api/tasks/stats")
+async def api_task_stats():
+    """Quick stats for the dashboard header."""
+    all_tasks = get_all_tasks(200)
+    by_status = {}
+    for t in all_tasks:
+        s = t.get("status", "UNKNOWN")
+        by_status[s] = by_status.get(s, 0) + 1
+    return {
+        "total": len(all_tasks),
+        "by_status": by_status,
+        "orchestrator": orchestrator.status,
+    }
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def api_cancel_task(task_id: str):
+    """Cancel a pending or assigned task."""
+    if db_cancel_task(task_id):
+        log_activity("system", "TASK_CANCELLED", f"Task cancelled: {task_id}")
+        return {"ok": True, "task_id": task_id}
+    raise HTTPException(status_code=400, detail="Task not found or cannot be cancelled")
 
 class AgentProfileBody(BaseModel):
     """Full employee profile — used for both create and update."""
@@ -464,6 +616,75 @@ async def api_test_brain(body: TestBrainBody):
 
 
 # ==========================================
+# 🛠️ TOOL CONNECTION TEST
+# ==========================================
+
+class TestToolBody(BaseModel):
+    tool_id: str
+    config: dict
+
+@app.post("/api/tools/test")
+async def api_test_tool(body: TestToolBody):
+    import httpx
+    tool = body.tool_id
+    cfg = body.config
+    
+    if tool == "github":
+        if not cfg.get("pat"):
+            return {"ok": False, "status": "Missing PAT"}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get("https://api.github.com/user", headers={"Authorization": f"token {cfg['pat']}"})
+            if r.status_code == 200:
+                return {"ok": True, "status": f"Connected as {r.json().get('login')}"}
+            return {"ok": False, "status": f"GitHub Error: {r.status_code}"}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "jules":
+        if not cfg.get("api_key"):
+            return {"ok": False, "status": "Missing API Key"}
+        try:
+            from backend_engine.caveman_tools.primitive_jules import list_sessions
+            res = list_sessions(cfg["api_key"], limit=1)
+            if res.get("success"):
+                return {"ok": True, "status": "Jules API Connected"}
+            return {"ok": False, "status": res.get("error", "Unknown error")}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "telegram":
+        if not cfg.get("bot_token"):
+            return {"ok": False, "status": "Missing Bot Token"}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(f"https://api.telegram.org/bot{cfg['bot_token']}/getMe")
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("ok"):
+                    return {"ok": True, "status": f"Connected to @{data['result'].get('username')}"}
+            return {"ok": False, "status": "Invalid Telegram Token"}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
+    elif tool == "email":
+        host = cfg.get("smtp_host")
+        port = cfg.get("smtp_port")
+        if not host or not port:
+            return {"ok": False, "status": "Missing Host or Port"}
+        try:
+            import smtplib
+            # Simple connection check, no auth performed to avoid locking accounts with bad passes repeatedly
+            server = smtplib.SMTP(host, int(port), timeout=3)
+            server.ehlo()
+            server.quit()
+            return {"ok": True, "status": "SMTP Server Reachable"}
+        except Exception as e:
+            return {"ok": False, "status": f"SMTP Error: {str(e)}"}
+
+    return {"ok": False, "status": "Testing not implemented for this tool"}
+
+# ==========================================
 # 🧠 SKILLS EXTRACTOR (skill-seekers)
 # ==========================================
 
@@ -571,6 +792,5 @@ if __name__ == "__main__":
     host = os.getenv("BACKEND_HOST", "0.0.0.0")
     port = int(os.getenv("BACKEND_PORT", "8000"))
 
-    logger.info("🚀 Starting Paperclip Reborn on %s:%d", host, port)
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("main:app", host=host, port=port)
 

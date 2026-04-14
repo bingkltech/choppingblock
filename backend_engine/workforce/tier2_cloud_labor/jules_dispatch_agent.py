@@ -10,15 +10,17 @@ Orchestrates the complete Jules workflow:
 """
 
 import os
+import sys
 import logging
 from typing import Optional
 from datetime import datetime
 
-from ...anatomy.agent_core import BaseAgent, AgentState
-from ...caveman_tools.primitive_jules import (
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from anatomy.agent_core import BaseAgent, AgentState
+from caveman_tools.primitive_jules import (
     create_session, get_session, approve_plan, send_message, list_sessions
 )
-from ...database.db_manager import (
+from database.db_manager import (
     create_jules_session, update_jules_session,
     get_jules_session, get_active_jules_sessions, get_all_jules_sessions,
     log_activity, create_alert,
