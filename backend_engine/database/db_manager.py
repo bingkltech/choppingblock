@@ -49,9 +49,11 @@ def decrypt_val(val: str) -> str:
 
 import os
 
-DB_DIR = os.path.dirname(__file__)
+import os
+
+DB_DIR = os.path.join(os.path.dirname(__file__), "data")
 if not os.path.exists(DB_DIR):
-    os.makedirs(DB_DIR)
+    os.makedirs(DB_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DB_DIR, "ledger.db")
 
