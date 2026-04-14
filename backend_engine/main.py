@@ -302,11 +302,24 @@ async def update_env_settings(body: EnvUpdateRequest):
 
 @app.get("/api/agents")
 async def api_get_agents():
-    """Returns all agents (no hiding)."""
+    """Returns all agents (with API keys obscured for security)."""
     agents = get_all_agents(include_terminated=True)
     # Normalize field names for the frontend
     normalized = []
     for a in agents:
+        # Obscure brain api key
+        api_key = a.get("api_key", "")
+        if api_key:
+            api_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+
+        # Obscure toolconfigs api keys
+        toolconfigs = a.get("toolconfigs", {})
+        for tool, cfg in toolconfigs.items():
+            if isinstance(cfg, dict):
+                for k, v in cfg.items():
+                    if k in ["api_key", "pat", "token", "password"] and isinstance(v, str) and v:
+                        cfg[k] = f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "***"
+
         normalized.append({
             "id":           a.get("agent_id"),
             "name":         a.get("agent_name"),
@@ -316,9 +329,9 @@ async def api_get_agents():
             "state":        a.get("state", "IDLE"),
             "model":        a.get("brain_model", ""),
             "custom_skills":a.get("custom_skills", ""),
-            "toolconfigs":  a.get("toolconfigs", {}),
+            "toolconfigs":  toolconfigs,
             "custom_tools": a.get("equipped_tools", []),
-            "apiKeys":      a.get("api_key", ""),
+            "apiKeys":      api_key,
             "mcpEndpoints": a.get("mcp_endpoints", ""),
             "health_pct":   a.get("health_pct", 100.0),
             "hired_at":     a.get("hired_at", ""),
@@ -332,6 +345,21 @@ async def api_get_agent(agent_id: str):
     agent = get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Obscure brain api key
+    api_key = agent.get("api_key", "")
+    if api_key:
+        agent["api_key"] = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+
+    # Obscure toolconfigs api keys
+    toolconfigs = agent.get("toolconfigs", {})
+    if isinstance(toolconfigs, dict):
+        for tool, cfg in toolconfigs.items():
+            if isinstance(cfg, dict):
+                for k, v in cfg.items():
+                    if k in ["api_key", "pat", "token", "password"] and isinstance(v, str) and v:
+                        cfg[k] = f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "***"
+
     return agent
 
 
@@ -458,15 +486,32 @@ async def api_update_agent_profile(agent_id: str, body: AgentProfileBody):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    api_key_update = body.api_key
+    if api_key_update is not None and ("..." in api_key_update or api_key_update == "***"):
+        # The key is obscured, do not update it unless it was changed
+        api_key_update = agent.get("api_key", "")
+
+    toolconfigs_update = body.toolconfigs
+    if toolconfigs_update is not None:
+        # Preserve obscured toolconfig secrets
+        existing_toolconfigs = agent.get("toolconfigs", {})
+        if isinstance(existing_toolconfigs, dict) and isinstance(toolconfigs_update, dict):
+            for tool, cfg in toolconfigs_update.items():
+                if isinstance(cfg, dict):
+                    for k, v in cfg.items():
+                        if k in ["api_key", "pat", "token", "password"] and isinstance(v, str) and ("..." in v or v == "***"):
+                            # Recover from existing
+                            cfg[k] = existing_toolconfigs.get(tool, {}).get(k, "")
+
     updates = {k: v for k, v in {
         "agent_name":    body.name,
         "role":          body.role,
         "tier":          body.tier,
         "brain_model":   body.brain_model,
-        "api_key":       body.api_key,
+        "api_key":       api_key_update,
         "mcp_endpoints": body.mcp_endpoints,
         "custom_skills": body.custom_skills,
-        "toolconfigs":   body.toolconfigs,
+        "toolconfigs":   toolconfigs_update,
         "equipped_tools":body.equipped_tools,
         "state":         body.state,
     }.items() if v is not None}
