@@ -1,0 +1,4 @@
+## 2025-05-14 - Prevent API Key Leakage from the Visual HQ API
+**Vulnerability:** The API endpoints `GET /api/agents` and `GET /api/agents/{agent_id}` were returning all API keys, including primary ones and ones defined in `toolconfigs` to the frontend without any obscurity. This leaked credentials to any client or browser accessing the API.
+**Learning:** Returning objects directly from the database or state often exposes sensitive credentials if specific keys are not filtered or obscured out of the dictionaries.
+**Prevention:** Always deep copy mutable state structures (like dictionaries and nested dicts) before obscuring or modifying fields, and explicitly obscure all secret keys (like `api_key`, `pat`, `token`, `password`) in the response layer. When handling updates (e.g. `PUT`), ignore the obscured markers (`...` or `***`) to avoid overwriting database values with display formatting.
