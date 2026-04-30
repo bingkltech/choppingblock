@@ -1,0 +1,28 @@
+CRASH AT: 2026-04-30T21:54:57.642507
+============================================================
+2026-04-30 21:51:33,238 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:51:33,239 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+2026-04-30 21:51:33,535 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:51:33,535 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+INFO:     Started server process [42388]
+INFO:     Waiting for application startup.
+2026-04-30 21:51:33,587 [INFO] paperclip.main: 📎 Paperclip Reborn — Backend Engine starting up...
+2026-04-30 21:51:33,597 [INFO] database.db_manager: 📦 Ledger database initialized at F:\012A_Github\choppingblock\backend_engine\database\data\ledger.db
+2026-04-30 21:51:33,605 [INFO] database.db_manager: 🌱 Seeded 5 Jules cloud accounts.
+2026-04-30 21:51:33,612 [INFO] database.db_manager: 🤖 Seeded default agents.
+2026-04-30 21:51:38,948 [INFO] paperclip.main: ✅ Backend ready. WebSocket at /ws/heartbeat
+2026-04-30 21:51:39,098 [INFO] paperclip.mcp_services: 🚀 Launching Native MCP Server (Skill Seekers) on port 8765...
+2026-04-30 21:51:39,114 [INFO] paperclip.main: 🎯 Orchestrator background loop started
+2026-04-30 21:51:39,114 [INFO] anatomy.orchestrator: 🎯 Orchestrator started (polling every 5s)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-04-30 21:51:39,416 [INFO] paperclip.mcp_services: [MCP] ❌ Error: mcp package not installed
+2026-04-30 21:51:39,416 [INFO] paperclip.mcp_services: [MCP] Install with: pip install mcp
+2026-04-30 21:51:39,416 [INFO] paperclip.mcp_services: [MCP] Import error: No module named 'mcp'
+2026-04-30 21:51:39,443 [WARNING] paperclip.mcp_services: ⚠️ MCP Server terminated with code 1
+INFO:     127.0.0.1:57873 - "PATCH /api/agents/god HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57884 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58020 - "PATCH /api/agents/god HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58028 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58105 - "PATCH /api/agents/god HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58112 - "GET /api/agents HTTP/1.1" 200 OK

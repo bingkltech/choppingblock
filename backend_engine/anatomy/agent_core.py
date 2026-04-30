@@ -46,7 +46,9 @@ class BaseAgent:
         agent_name: str,
         soul: str,
         brain: str,
-        tier: int,
+        tier: str,
+        department: str = "Unassigned",
+        specialization: str = "",
         hands: Optional[list[str]] = None,
     ):
         self.agent_id = agent_id
@@ -54,6 +56,8 @@ class BaseAgent:
         self.soul = soul
         self.brain = brain
         self.tier = tier
+        self.department = department
+        self.specialization = specialization
         self.hands: list[str] = hands or []
         self.state: AgentState = AgentState.IDLE
         self.current_task: str = "Idle"
@@ -65,9 +69,21 @@ class BaseAgent:
         self._heartbeat_callback: Optional[Callable] = None
 
         logger.info(
-            "🧬 Agent [%s] initialized | Tier %d | Brain: %s | Tools: %s",
-            self.agent_id, self.tier, self.brain, self.hands
+            "🧬 Agent [%s] initialized | Dept: %s | Spec: %s | Tier %s | Brain: %s | Tools: %s",
+            self.agent_id, self.department, self.specialization, self.tier, self.brain, self.hands
         )
+
+    def load_agency_skill(self) -> str:
+        """Loads the full instructions from the associated SKILL.md file for agency agents."""
+        if self.tier != "agency":
+            return self.soul
+            
+        import os
+        skill_path = os.path.expanduser(f"~/.gemini/antigravity/skills/{self.agent_id}/SKILL.md")
+        if os.path.exists(skill_path):
+            with open(skill_path, "r", encoding="utf-8") as f:
+                return f.read()
+        return self.soul
 
     # ------------------------------------------
     # Heartbeat
@@ -89,6 +105,8 @@ class BaseAgent:
             "agent_id": self.agent_id,
             "agent_name": self.agent_name,
             "tier": self.tier,
+            "department": self.department,
+            "specialization": self.specialization,
             "brain": self.brain,
             "state": self.state.value,
             "current_task": self.current_task,
@@ -178,6 +196,8 @@ class BaseAgent:
             "agent_id": self.agent_id,
             "agent_name": self.agent_name,
             "tier": self.tier,
+            "department": self.department,
+            "specialization": self.specialization,
             "brain": self.brain,
             "state": self.state.value,
             "current_task": self.current_task,

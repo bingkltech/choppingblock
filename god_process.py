@@ -24,7 +24,7 @@ if sys.stdout.encoding != 'utf-8':
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend_engine'))
 
 
-from backend_engine.workforce.tier1_executives.god_agent import GodAgent
+from backend_engine.workforce.executives.god_agent import GodAgent
 from backend_engine.config import GOD_MAX_RESTARTS, GOD_RESTART_COOLDOWN, GOD_CRASH_WINDOW, GOD_HEALTH_POLL_INTERVAL, GOD_STALE_THRESHOLD, BACKEND_URL
 
 logging.basicConfig(

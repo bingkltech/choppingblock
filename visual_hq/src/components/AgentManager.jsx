@@ -248,7 +248,7 @@ const WhatsAppQRPanel = ({ onScanned }) => {
 // ─────────────────────────────────────────────
 // TOOL CONFIG PANEL — expands under each chip
 // ─────────────────────────────────────────────
-const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
+const ToolConfigPanel = ({ toolId, config, onChange, onScanned, onTestSuccess }) => {
   const def = TOOL_REGISTRY[toolId];
   if (!def) return null;
 
@@ -281,7 +281,11 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool_id: toolId, config }),
       });
-      setTestResult(await res.json());
+      const data = await res.json();
+      setTestResult(data);
+      if (data.ok && onTestSuccess) {
+        onTestSuccess();
+      }
     } catch {
       setTestResult({ ok: false, status: 'Backend unreachable' });
     } finally {
@@ -329,7 +333,7 @@ const ToolConfigPanel = ({ toolId, config, onChange, onScanned }) => {
 // ─────────────────────────────────────────────
 // SMART TOOL CHIP GRID
 // ─────────────────────────────────────────────
-const SmartToolGrid = ({ toolconfigs, onChange }) => {
+const SmartToolGrid = ({ toolconfigs, onChange, onTestSuccess }) => {
   const [expanded, setExpanded] = useState(null);
 
   const toggleExpand = (id) => {
@@ -393,6 +397,7 @@ const SmartToolGrid = ({ toolconfigs, onChange }) => {
                     config={cfg}
                     onChange={(key, val) => handleFieldChange(id, key, val)}
                     onScanned={() => handleScanned(id)}
+                    onTestSuccess={onTestSuccess}
                   />
                 </motion.div>
               )}
@@ -474,6 +479,11 @@ const AgentDossierCard = ({ agent, index, onEdit, onToggle, onTerminate, onModel
             {isSystem && <span className="dossier-system-badge">SYSTEM</span>}
           </h2>
           <span className="dossier-role">{agent.role || 'Unassigned Role'}</span>
+          {agent.department && agent.department !== 'Unassigned' && (
+             <span className="dossier-department" style={{ fontSize: '0.7rem', color: '#9ca3af', display: 'block' }}>
+               {agent.department} {agent.specialization ? `• ${agent.specialization}` : ''}
+             </span>
+          )}
         </div>
         <div className="dossier-status-pill">
           <span className={`status-dot ${isAlive ? 'alive' : 'dead'}`} />
@@ -637,8 +647,10 @@ const AgentManager = ({ apiUsage = [] }) => {
   const [form, setForm] = useState(BLANK_FORM);
   const [activeTab, setActiveTab] = useState('workforce');
   const [skillFetch, setSkillFetch] = useState({ source: '', loading: false, error: null });
+  const [skillGenerateLoading, setSkillGenerateLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [departmentFilter, setDepartmentFilter] = useState('All');
 
   const fetchAgents = async () => {
     try {
@@ -726,21 +738,44 @@ const AgentManager = ({ apiUsage = [] }) => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const payload = {
-      name:          form.name,
-      role:          form.role,
-      tier:          form.tier,
-      brain_model:   form.brain_provider,
-      api_key:       form.brain_api_key,
-      mcp_endpoints: form.mcp_endpoints,
-      custom_skills: form.skills,
-      toolconfigs:   form.toolconfigs,
-      equipped_tools: ALL_TOOL_IDS.filter(id => toolStatus(id, form.toolconfigs) === 'ready'),
-      state:         'IDLE',
-    };
+  const handleGenerateSkills = async () => {
+    if (!form.role || !form.role.trim()) return;
+    setSkillGenerateLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/skills/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: form.role })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Generation failed');
+      
+      const newSkills = data.skills;
+      setForm(prev => ({
+        ...prev,
+        skills: prev.skills ? `${prev.skills}\n\n${newSkills}` : newSkills
+      }));
+    } catch (e) {
+      console.error("Skill generation failed", e);
+    } finally {
+      setSkillGenerateLoading(false);
+    }
+  };
 
+  const getPayload = () => ({
+    name:          form.name,
+    role:          form.role,
+    tier:          form.tier,
+    brain_model:   form.brain_provider,
+    api_key:       form.brain_api_key,
+    mcp_endpoints: form.mcp_endpoints,
+    custom_skills: form.skills,
+    toolconfigs:   form.toolconfigs,
+    equipped_tools: ALL_TOOL_IDS.filter(id => toolStatus(id, form.toolconfigs) === 'ready'),
+    state:         'IDLE',
+  });
+
+  const saveAgentChanges = async (payload, isSilentAutoSave = false) => {
     try {
       if (editingAgent) {
         // --- UPDATE existing agent ---
@@ -761,11 +796,23 @@ const AgentManager = ({ apiUsage = [] }) => {
       }
     } catch (err) {
       console.error('Save failed:', err);
-      // Fall back to local state so user doesn't lose work
     }
 
     await fetchAgents();  // Reload from DB
-    closeModal();
+    if (!isSilentAutoSave) {
+      closeModal();
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await saveAgentChanges(getPayload(), false);
+  };
+
+  const handleAutoSave = async () => {
+    if (editingAgent) {
+      await saveAgentChanges(getPayload(), true);
+    }
   };
 
   const terminateAgent = async (agentId, agentName) => {
@@ -788,8 +835,8 @@ const AgentManager = ({ apiUsage = [] }) => {
       const merged = { ...sa, ...db };
       return {
         ...merged,
-        id: db.id || sa.agent_id,
-        name: db.name || sa.agent_name,
+        id: sa.agent_id, // Force string ID override securely
+        name: db.agent_name || db.name || sa.agent_name,
         status: (db.state === 'IDLE' || !db.state) ? 'Alive' : db.state,
         model: db.brain_model || sa.brain_model,
         apiKeys: db.api_key || sa.api_key || '',
@@ -805,19 +852,22 @@ const AgentManager = ({ apiUsage = [] }) => {
       .filter(a => !systemIds.has(a.agent_id || a.id))
       .map(a => ({
         ...a,
-        id: a.agent_id || a.id,
+        id: a.agent_id || String(a.id), // Ensure string IDs always
         name: a.agent_name || a.name,
         status: a.state === 'IDLE' ? 'Alive' : a.state || a.status,
         model: a.brain_model || a.model,
         apiKeys: a.api_key || '',
         custom_skills: a.custom_skills || (a.role?.includes('QA') ? 'Testing, Code Review, Linting' : 'Full-Stack Development, API Integration'),
         toolconfigs: a.toolconfigs || {},
+        department: a.department || 'Unassigned',
+        specialization: a.specialization || '',
       }));
 
     return [...system, ...others];
   })();
 
-  const displayed = normalizedAgents;
+  const uniqueDepartments = ['All', ...new Set(normalizedAgents.map(a => a.department).filter(Boolean))].sort();
+  const displayed = normalizedAgents.filter(a => departmentFilter === 'All' || a.department === departmentFilter);
 
   // Count ready tools in form for submit label
   const readyToolCount = ALL_TOOL_IDS.filter(id => toolStatus(id, form.toolconfigs) === 'ready').length;
@@ -838,7 +888,21 @@ const AgentManager = ({ apiUsage = [] }) => {
             <button className={`am-tab ${activeTab === 'workforce' ? 'active' : ''}`} onClick={() => setActiveTab('workforce')}>🤖 Workforce</button>
             <button className={`am-tab ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => setActiveTab('tasks')}>📋 Task Queue</button>
           </div>
-          {activeTab === 'workforce' && <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>}
+          {activeTab === 'workforce' && (
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <select 
+                className="hire-input" 
+                style={{ width: 'auto', padding: '6px 12px', borderRadius: '8px' }}
+                value={departmentFilter}
+                onChange={e => setDepartmentFilter(e.target.value)}
+              >
+                {uniqueDepartments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+              <button className="am-hire-btn" onClick={openHireModal}>+ Hire Agent</button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -912,7 +976,18 @@ const AgentManager = ({ apiUsage = [] }) => {
                         onChange={e => setForm({ ...form, name: e.target.value })} className="hire-input" />
                     </div>
                     <div>
-                      <label className="hire-label">Role / Job Title</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
+                        <label className="hire-label" style={{ marginBottom: 0 }}>Role / Job Title</label>
+                        <button
+                          type="button"
+                          className="skill-generate-btn"
+                          title="Auto-generate required skills based on this job title"
+                          onClick={handleGenerateSkills}
+                          disabled={skillGenerateLoading || !form.role.trim()}
+                        >
+                          {skillGenerateLoading ? '✨ Thinking...' : '✨ Auto-Generate Skills'}
+                        </button>
+                      </div>
                       <input required type="text" placeholder="e.g. Full-Stack Engineer, QA Agent..." value={form.role}
                         onChange={e => setForm({ ...form, role: e.target.value })} className="hire-input" />
                     </div>
@@ -1045,6 +1120,7 @@ const AgentManager = ({ apiUsage = [] }) => {
                   <SmartToolGrid
                     toolconfigs={form.toolconfigs}
                     onChange={handleToolConfigChange}
+                    onTestSuccess={handleAutoSave}
                   />
                 </div>
 

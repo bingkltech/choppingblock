@@ -115,7 +115,9 @@ def init_database() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL UNIQUE,
             agent_name TEXT NOT NULL,
-            tier TEXT DEFAULT 'tier3',
+            tier TEXT DEFAULT 'agency',
+            department TEXT DEFAULT 'Unassigned',
+            specialization TEXT DEFAULT '',
             brain_model TEXT,
             role TEXT DEFAULT '',
             current_task TEXT DEFAULT 'Idle',
@@ -137,6 +139,8 @@ def init_database() -> None:
 
     # Safe migrations for any pre-existing DB
     _safe_add_columns(cursor, 'Agent_Status', [
+        ('department',    'TEXT',    "'Unassigned'"),
+        ('specialization','TEXT',    "''"),
         ('role',          'TEXT',    "''"),
         ('custom_skills', 'TEXT',    "''"),
         ('toolconfigs',   'TEXT',    "'{}'"),
@@ -236,10 +240,18 @@ def init_database() -> None:
             started_at TEXT,
             completed_at TEXT,
             retry_count INTEGER DEFAULT 0,
-            max_retries INTEGER DEFAULT 2
+            max_retries INTEGER DEFAULT 2,
+            depends_on TEXT DEFAULT ''
         )
     """)
 
+    conn.commit()
+    
+    # Safe migrations for Task_Queue
+    _safe_add_columns(cursor, 'Task_Queue', [
+        ('depends_on', 'TEXT', "''")
+    ])
+    
     conn.commit()
     conn.close()
     logger.info("📦 Ledger database initialized at %s", DB_PATH)
@@ -335,46 +347,61 @@ def update_api_usage_config(account_name: str, api_key: str, model: str, github_
 # ==========================================
 
 def seed_default_agents() -> None:
-    """Seeds the default agent roster into Agent_Status (INSERT OR IGNORE — never overwrites custom agents)."""
+    """Seeds the executive agents and dynamically loads the 184 Agency skills."""
     import json
+    import glob
+    import re
     conn = get_connection()
     now = datetime.now().isoformat()
+    
+    # 1. System Executives and System Ops
     agents = [
-        ("ceo",    "CEO Agent",               "tier1", "claude-sonnet-4-20250514",  "CEO / Executive Director",  "Strategic planning, delegation, executive oversight", '["bash","github"]'),
-        ("god",    "God Agent",               "tier1", "claude-3.5-sonnet",  "System Overseer",           "System monitoring, self-healing, meta-cognition",     '["bash"]'),
-        ("jules_1","Antigravity (Jules 1)",   "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration, Code Review", '["jules","github","bash"]'),
-        ("jules_2","Cloud Worker (Jules 2)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Full-Stack Development, API Integration",             '["jules","github","bash"]'),
-        ("jules_3","Cloud Worker (Jules 3)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Testing, QA, Code Review",                            '["jules","github","bash"]'),
-        ("jules_4","Cloud Worker (Jules 4)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "DevOps, CI/CD, Docker deployment",                    '["jules","docker","bash"]'),
-        ("jules_5","Cloud Worker (Jules 5)",  "tier2", "gemini-1.5-pro",     "Cloud Coding Agent",        "Documentation, Architecture diagrams",                '["jules","browser","bash"]'),
-        ("qa",     "QA Agent",                "tier3", "ollama:llama3",      "QA Engineer",               "Testing, Code Review, Linting, Bug Reproduction",     '["docker","bash"]'),
-        ("ops",    "Ops Agent",               "tier3", "ollama:qwen2.5-coder","DevOps Engineer",          "CI/CD, GitHub Actions, Docker, Linux Administration", '["github","bash","docker"]'),
+        ("ceo", "CEO Agent", "executives", "Executive", "Strategic Planning", "claude-sonnet-4-20250514", "CEO / Executive Director", "Strategic planning, delegation, executive oversight", '["bash","github"]'),
+        ("god", "God Agent", "executives", "Executive", "System Healing", "gemini-3.1-pro", "System Overseer", "System monitoring, self-healing, meta-cognition", '["bash", "github", "jules", "browser", "docker", "antigravity"]'),
+        ("jules_dispatch", "Jules Dispatcher", "system_agents", "System Ops", "Cloud Tasking", "jules-api", "Task Dispatcher", "Dispatches complex coding tasks to the Google Jules API", '["jules","github"]'),
+        ("qa", "QA Sandbox Agent", "system_agents", "System Ops", "Testing", "ollama:llama3", "Quality Assurance", "Pulls PRs into Docker containers, runs tests, reports results", '["docker","bash","github"]'),
+        ("ops", "Ops Agent", "system_agents", "System Ops", "Repository Maintenance", "ollama:qwen2.5-coder", "DevOps", "Merges PRs and handles repo cleanup", '["github","bash"]'),
     ]
-    for (aid, name, tier, brain, role, skills, tools) in agents:
-        # Special case: God Agent config from user requirements
-        if aid == "god":
-            brain = "gemini-3.1-pro"
-            skills = "System Overseer, Self-Healing Autonomy, Meta-Cognition, Framework Architect"
-            tools = '["bash", "github", "jules", "browser", "docker", "antigravity"]'
-            
-            conn.execute(
-                """INSERT OR IGNORE INTO Agent_Status
-                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
-                    toolconfigs, state, hired_at, last_heartbeat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
-                (aid, name, tier, brain, role, skills, tools, now, now)
-            )
-        else:
-            conn.execute(
-                """INSERT OR IGNORE INTO Agent_Status
-                   (agent_id, agent_name, tier, brain_model, role, custom_skills, equipped_tools,
-                    toolconfigs, state, hired_at, last_heartbeat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
-                (aid, name, tier, brain, role, skills, tools, now, now)
-            )
+    
+    # 2. Dynamic Agency Loading
+    skills_dir = os.path.expanduser("~/.gemini/antigravity/skills")
+    if os.path.exists(skills_dir):
+        for skill_folder in os.listdir(skills_dir):
+            if skill_folder.startswith("agency-"):
+                skill_path = os.path.join(skills_dir, skill_folder, "SKILL.md")
+                if os.path.exists(skill_path):
+                    with open(skill_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        
+                    # Extract name and desc
+                    name_match = re.search(r"name:\s*(.+)", content)
+                    desc_match = re.search(r"description:\s*(.+)", content)
+                    
+                    aid = skill_folder
+                    raw_name = name_match.group(1).strip() if name_match else skill_folder
+                    agent_name = raw_name.replace("agency-", "").replace("-", " ").title()
+                    desc = desc_match.group(1).strip() if desc_match else ""
+                    
+                    tier = "agency"
+                    department = "Agency Operations"
+                    specialization = agent_name
+                    role = agent_name
+                    brain = "gemini-1.5-pro"
+                    tools = '["bash", "github", "jules"]'
+                    
+                    agents.append((aid, agent_name, tier, department, specialization, brain, role, desc, tools))
+    
+    for (aid, name, tier, dept, spec, brain, role, skills, tools) in agents:
+        conn.execute(
+            """INSERT OR IGNORE INTO Agent_Status
+               (agent_id, agent_name, tier, department, specialization, brain_model, role, custom_skills, equipped_tools,
+                toolconfigs, state, hired_at, last_heartbeat)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'IDLE', ?, ?)""",
+            (aid, name, tier, dept, spec, brain, role, skills, tools, now, now)
+        )
     conn.commit()
     conn.close()
-    logger.info("🤖 Seeded default agents.")
+    logger.info("🤖 Seeded system executives and dynamic Agency agents.")
 
 
 def upsert_agent_profile(agent_id: str, **kwargs) -> None:
@@ -766,19 +793,19 @@ def get_all_jules_sessions(limit: int = 50) -> list[dict]:
 # ==========================================
 
 def create_task(task_id: str, task_type: str, description: str,
-                priority: int = 5, input_data: str = '{}') -> dict:
+                priority: int = 5, input_data: str = '{}', assigned_agent: str = None, depends_on: str = "") -> dict:
     """Create a new task in the queue. Returns the created task."""
     conn = get_connection()
     try:
         now = datetime.now().isoformat()
         conn.execute(
-            """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (task_id, task_type, description, priority, input_data, now)
+            """INSERT INTO Task_Queue (task_id, task_type, description, priority, input_data, assigned_agent, depends_on, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, task_type, description, priority, input_data, assigned_agent, depends_on, now)
         )
         conn.commit()
         row = conn.execute("SELECT * FROM Task_Queue WHERE task_id = ?", (task_id,)).fetchone()
-        logger.info("📋 Task created: %s [%s] priority=%d", task_id, task_type, priority)
+        logger.info("📋 Task created: %s [%s] priority=%d assigned_agent=%s", task_id, task_type, priority, assigned_agent)
         return dict(row) if row else {}
     finally:
         conn.close()
@@ -871,10 +898,17 @@ def retry_task(task_id: str) -> bool:
 
 
 def get_pending_tasks(limit: int = 20) -> list[dict]:
-    """Get tasks waiting to be assigned, ordered by priority then creation time."""
+    """Get tasks waiting to be assigned, ordered by priority then creation time. Skips tasks with pending dependencies."""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM Task_Queue WHERE status = 'PENDING' ORDER BY priority ASC, created_at ASC LIMIT ?",
+        """
+        SELECT t.* FROM Task_Queue t
+        LEFT JOIN Task_Queue d ON t.depends_on = d.task_id
+        WHERE t.status = 'PENDING'
+          AND (t.depends_on = '' OR t.depends_on IS NULL OR d.status = 'DONE')
+        ORDER BY t.priority ASC, t.created_at ASC
+        LIMIT ?
+        """,
         (limit,)
     ).fetchall()
     conn.close()

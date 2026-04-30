@@ -19,8 +19,9 @@ const TYPE_LABELS = {
 const TaskQueue = () => {
   const [tasks, setTasks] = useState([]);
   const [stats, setStats] = useState({ total: 0, by_status: {}, orchestrator: {} });
+  const [agents, setAgents] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [newTask, setNewTask] = useState({ task_type: 'GENERAL', description: '', priority: 5 });
+  const [newTask, setNewTask] = useState({ task_type: 'GENERAL', description: '', priority: 5, assigned_agent: '' });
 
   const fetchTasks = async () => {
     try {
@@ -37,9 +38,17 @@ const TaskQueue = () => {
     } catch (e) { console.error(e); }
   };
 
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/agents`);
+      setAgents(await res.json());
+    } catch (e) { console.error(e); }
+  };
+
   useEffect(() => {
     fetchTasks();
     fetchStats();
+    fetchAgents();
     const interval = setInterval(() => { fetchTasks(); fetchStats(); }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -52,7 +61,7 @@ const TaskQueue = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTask),
       });
-      setNewTask({ task_type: 'GENERAL', description: '', priority: 5 });
+      setNewTask({ task_type: 'GENERAL', description: '', priority: 5, assigned_agent: '' });
       setShowCreate(false);
       fetchTasks();
       fetchStats();
@@ -113,12 +122,24 @@ const TaskQueue = () => {
                 onChange={e => setNewTask(s => ({ ...s, task_type: e.target.value }))}
                 className="hire-input"
               >
-                <option value="GENERAL">📌 General</option>
+                <option value="GENERAL">📌 General / Agency Task</option>
                 <option value="WRITE_ARCH">🏛️ Write Architecture</option>
                 <option value="CODE">💻 Code (Jules)</option>
                 <option value="TEST_PR">🐳 Test PR (QA)</option>
                 <option value="MERGE_PR">🔧 Merge PR (Ops)</option>
                 <option value="HEAL">🩺 Heal (God)</option>
+              </select>
+              <select
+                value={newTask.assigned_agent || ''}
+                onChange={e => setNewTask(s => ({ ...s, assigned_agent: e.target.value }))}
+                className="hire-input"
+              >
+                <option value="">🤖 Auto-Assign by Task Type</option>
+                {agents.map(a => (
+                  <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
+                    👤 {a.agent_name || a.name}
+                  </option>
+                ))}
               </select>
               <select
                 value={newTask.priority}

@@ -7,7 +7,8 @@ export default function Settings() {
     CLAUDE_API_KEY: '',
     GEMINI_API_KEY: '',
     GITHUB_PAT: '',
-    JULES_API_KEY: ''
+    JULES_API_KEY: '',
+    ANTIGRAVITY_API_KEY: ''
   });
   
   const [inputs, setInputs] = useState({});
@@ -155,6 +156,19 @@ export default function Settings() {
             name="GITHUB_PAT"
             placeholder={keys.GITHUB_PAT ? `Current: ${keys.GITHUB_PAT}` : 'ghp_...'}
             value={inputs.GITHUB_PAT || ''}
+            onChange={handleChange}
+            style={{ padding: '0.75rem', borderRadius: '4px', background: 'var(--bg-page)', border: '1px solid var(--border)', color: 'white', fontFamily: 'monospace' }}
+          />
+        </div>
+
+        {/* Antigravity AI */}
+        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Antigravity AI Token (Global Override)</label>
+          <input 
+            type="password" 
+            name="ANTIGRAVITY_API_KEY"
+            placeholder={keys.ANTIGRAVITY_API_KEY ? `Current: ${keys.ANTIGRAVITY_API_KEY}` : 'Enter your persistent Antigravity token...'}
+            value={inputs.ANTIGRAVITY_API_KEY || ''}
             onChange={handleChange}
             style={{ padding: '0.75rem', borderRadius: '4px', background: 'var(--bg-page)', border: '1px solid var(--border)', color: 'white', fontFamily: 'monospace' }}
           />

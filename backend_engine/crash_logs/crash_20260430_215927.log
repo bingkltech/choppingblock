@@ -1,0 +1,28 @@
+CRASH AT: 2026-04-30T21:59:27.660318
+============================================================
+2026-04-30 21:57:00,200 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:57:00,200 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+2026-04-30 21:57:00,387 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:57:00,388 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+INFO:     Started server process [8720]
+INFO:     Waiting for application startup.
+2026-04-30 21:57:00,413 [INFO] paperclip.main: 📎 Paperclip Reborn — Backend Engine starting up...
+2026-04-30 21:57:00,415 [INFO] database.db_manager: 📦 Ledger database initialized at F:\012A_Github\choppingblock\backend_engine\database\data\ledger.db
+2026-04-30 21:57:00,421 [INFO] database.db_manager: 🌱 Seeded 5 Jules cloud accounts.
+2026-04-30 21:57:00,426 [INFO] database.db_manager: 🤖 Seeded default agents.
+2026-04-30 21:57:02,410 [INFO] paperclip.main: ✅ Backend ready. WebSocket at /ws/heartbeat
+2026-04-30 21:57:02,416 [INFO] paperclip.mcp_services: 🚀 Launching Native MCP Server (Skill Seekers) on port 8765...
+2026-04-30 21:57:02,432 [INFO] paperclip.main: 🎯 Orchestrator background loop started
+2026-04-30 21:57:02,432 [INFO] anatomy.orchestrator: 🎯 Orchestrator started (polling every 5s)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-04-30 21:57:09,396 [INFO] paperclip.mcp_services: [MCP] usage: python.exe -m skill_seekers.mcp.server_fastmcp [-h] [--http]
+2026-04-30 21:57:09,396 [INFO] paperclip.mcp_services: [MCP] [--port PORT]
+2026-04-30 21:57:09,396 [INFO] paperclip.mcp_services: [MCP] [--host HOST]
+2026-04-30 21:57:09,396 [INFO] paperclip.mcp_services: [MCP] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}]
+2026-04-30 21:57:09,396 [INFO] paperclip.mcp_services: [MCP] python.exe -m skill_seekers.mcp.server_fastmcp: error: unrecognized arguments: --transport http
+2026-04-30 21:57:09,568 [WARNING] paperclip.mcp_services: ⚠️ MCP Server terminated with code 2
+INFO:     127.0.0.1:58479 - "PATCH /api/agents/god HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58486 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58543 - "PATCH /api/agents/god HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58545 - "GET /api/agents HTTP/1.1" 200 OK

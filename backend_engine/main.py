@@ -32,6 +32,7 @@ from database.db_manager import (
     create_task, get_all_tasks, get_pending_tasks, get_running_tasks,
     cancel_task as db_cancel_task,
 )
+import mcp_services
 from anatomy.shift_manager import ShiftManager, ShiftMode
 from anatomy.orchestrator import Orchestrator
 from routers import admin_router
@@ -81,6 +82,17 @@ async def lifespan(app: FastAPI):
     log_activity("system", "BOOT", "Paperclip Reborn backend initialized successfully.")
     logger.info("✅ Backend ready. WebSocket at /ws/heartbeat")
 
+    # Start the native MCP server
+    mcp_services.start_mcp_servers()
+    
+    # Auto-bind God Agent to the Native MCP
+    god_agent = get_agent("god")
+    if god_agent:
+        current_mcp = god_agent.get("mcp_endpoints", "")
+        if "127.0.0.1:8765" not in current_mcp:
+            new_mcp = f"{current_mcp}, http://127.0.0.1:8765/sse" if current_mcp else "http://127.0.0.1:8765/sse"
+            upsert_agent_profile("god", mcp_endpoints=new_mcp)
+
     # Start the Orchestrator as a background task
     orch_task = asyncio.create_task(orchestrator.start())
     logger.info("🎯 Orchestrator background loop started")
@@ -90,6 +102,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await orchestrator.stop()
     orch_task.cancel()
+    mcp_services.stop_mcp_servers()
     logger.info("🛑 Paperclip Reborn — Backend Engine shutting down.")
 
 
@@ -113,6 +126,23 @@ app.add_middleware(
 
 app.include_router(admin_router.router)
 app.include_router(jules_router_api.router)
+
+@app.get("/api/vault")
+def get_vault_state():
+    """Returns the current state of the API Vault (keys and active cooldowns)."""
+    from anatomy.api_vault import api_vault as main_vault
+    import time
+    now = time.time()
+    return {
+        "gemini_keys": len(main_vault.gemini_vault.keys),
+        "gemini_cooldowns": [{"key": k[-4:] if len(k)>4 else k, "remaining": int(main_vault.gemini_vault.cooldowns[k] - now)} for k in main_vault.gemini_vault.cooldowns if main_vault.gemini_vault.cooldowns[k] > now],
+        "jules_keys": len(main_vault.jules_vault.keys),
+        "jules_cooldowns": [{"key": k[-4:] if len(k)>4 else k, "remaining": int(main_vault.jules_vault.cooldowns[k] - now)} for k in main_vault.jules_vault.cooldowns if main_vault.jules_vault.cooldowns[k] > now],
+        "openai_keys": len(main_vault.openai_vault.keys),
+        "openai_cooldowns": [{"key": k[-4:] if len(k)>4 else k, "remaining": int(main_vault.openai_vault.cooldowns[k] - now)} for k in main_vault.openai_vault.cooldowns if main_vault.openai_vault.cooldowns[k] > now],
+        "anthropic_keys": len(main_vault.anthropic_vault.keys),
+        "anthropic_cooldowns": [{"key": k[-4:] if len(k)>4 else k, "remaining": int(main_vault.anthropic_vault.cooldowns[k] - now)} for k in main_vault.anthropic_vault.cooldowns if main_vault.anthropic_vault.cooldowns[k] > now],
+    }
 
 
 # ==========================================
@@ -238,7 +268,7 @@ async def root():
 
 # --- Settings ---
 
-GLOBAL_KEYS = ["OPENAI_API_KEY", "CLAUDE_API_KEY", "GEMINI_API_KEY", "GITHUB_PAT", "JULES_API_KEY"]
+GLOBAL_KEYS = ["OPENAI_API_KEY", "CLAUDE_API_KEY", "GEMINI_API_KEY", "GITHUB_PAT", "JULES_API_KEY", "ANTIGRAVITY_API_KEY"]
 
 @app.get("/api/settings/env")
 async def get_env_settings():
@@ -324,7 +354,7 @@ async def api_get_agents():
             "id":           a.get("agent_id"),
             "name":         a.get("agent_name"),
             "role":         a.get("role", ""),
-            "tier":         a.get("tier", "tier3"),
+            "tier":         a.get("tier", "agency"),
             "status":       "Alive" if a.get("state") not in ("IDLE", "ERROR", "TERMINATED") else ("Error" if a.get("state") == "ERROR" else "Offline"),
             "state":        a.get("state", "IDLE"),
             "model":        a.get("brain_model", ""),
@@ -377,7 +407,7 @@ async def api_trigger_heal(body: dict):
     traceback_text = body.get("traceback", "")
     if not traceback_text:
         raise HTTPException(status_code=400, detail="Missing 'traceback' in body")
-    from workforce.tier1_executives.god_agent import GodAgent
+    from workforce.executives.god_agent import GodAgent
     god = GodAgent()
     result = god.heal(traceback_text, auto_apply=False)
     log_activity("god", "HEAL_CYCLE", f"Manual heal: {result.get('root_cause', 'unknown')}")
@@ -391,6 +421,7 @@ class TaskCreateBody(BaseModel):
     description: str
     priority: int = 5    # 1=highest, 10=lowest
     input_data: dict = {}
+    assigned_agent: Optional[str] = None
 
 @app.post("/api/tasks")
 async def api_create_task(body: TaskCreateBody):
@@ -403,6 +434,7 @@ async def api_create_task(body: TaskCreateBody):
         description=body.description,
         priority=body.priority,
         input_data=json.dumps(body.input_data),
+        assigned_agent=body.assigned_agent if body.assigned_agent else None,
     )
     log_activity("system", "TASK_CREATED", f"New task: {task_id} ({body.task_type})")
     return task
@@ -465,7 +497,7 @@ async def api_create_agent(body: AgentProfileBody):
         agent_id,
         agent_name=body.name,
         role=body.role or "",
-        tier=body.tier or "tier3",
+        tier=body.tier or "agency",
         brain_model=body.brain_model or "ollama:llama3",
         api_key=body.api_key or "",
         mcp_endpoints=body.mcp_endpoints or "",
@@ -690,7 +722,7 @@ async def api_test_tool(body: TestToolBody):
         if not cfg.get("api_key"):
             return {"ok": False, "status": "Missing API Key"}
         try:
-            from backend_engine.caveman_tools.primitive_jules import list_sessions
+            from caveman_tools.primitive_jules import list_sessions
             res = list_sessions(cfg["api_key"], limit=1)
             if res.get("success"):
                 return {"ok": True, "status": "Jules API Connected"}
@@ -727,6 +759,21 @@ async def api_test_tool(body: TestToolBody):
         except Exception as e:
             return {"ok": False, "status": f"SMTP Error: {str(e)}"}
 
+    elif tool == "antigravity":
+        key = cfg.get("api_key")
+        if not key:
+            return {"ok": False, "status": "Missing Gemini API Key"}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}")
+            if r.status_code == 200:
+                data = r.json()
+                models = data.get("models", [])
+                return {"ok": True, "status": f"Connected ({len(models)} models found)"}
+            return {"ok": False, "status": f"Invalid Gemini Key (HTTP {r.status_code})"}
+        except Exception as e:
+            return {"ok": False, "status": str(e)}
+
     return {"ok": False, "status": "Testing not implemented for this tool"}
 
 # ==========================================
@@ -735,6 +782,57 @@ async def api_test_tool(body: TestToolBody):
 
 class SkillExtractBody(BaseModel):
     source: str  # GitHub repo (e.g. "facebook/react") or URL
+
+class SkillGenerateBody(BaseModel):
+    role: str
+
+@app.post("/api/skills/generate")
+async def api_generate_skills(body: SkillGenerateBody):
+    import httpx
+    role = body.role.strip()
+    if not role:
+        raise HTTPException(status_code=400, detail="role is required")
+        
+    logger.info("✨ Generating skills for role: %s", role)
+    
+    god = get_agent("god")
+    if not god:
+        raise HTTPException(status_code=500, detail="System God Agent not found")
+        
+    configs = god.get("toolconfigs", {})
+    anti = configs.get("antigravity", {})
+    api_key = anti.get("api_key")
+    
+    if not api_key:
+        raise HTTPException(status_code=400, detail="God Agent 'Antigravity API' tool not configured. Configure it to enable generative skills.")
+        
+    prompt = (
+        f"You are an expert HR Technical Recruiter. The user is hiring an AI Agent for the role of '{role}'. "
+        "Generate a comma-separated list of the 8-10 most critical, high-impact skills, frameworks, tools, and methodologies required for this exact position. "
+        "Ensure they are optimized for an AI language model to understand its persona. Only return the comma-separated list, nothing else."
+    )
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.4}
+            }
+            r = await client.post(url, json=payload)
+            
+            if r.status_code != 200:
+                raise HTTPException(status_code=r.status_code, detail=f"Gemini API Error: {r.text}")
+                
+            data = r.json()
+            out_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            if not out_text:
+                raise HTTPException(status_code=500, detail="Empty response from Gemini")
+                
+            return {"skills": out_text.strip()}
+    except Exception as e:
+        logger.error("Skill generation failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/skills/extract")
 async def api_extract_skills(body: SkillExtractBody):
@@ -757,8 +855,19 @@ async def api_extract_skills(body: SkillExtractBody):
     tmpdir = tempfile.mkdtemp(prefix="skill_extract_")
 
     try:
+        import sysconfig
+        # Try to find skill-seekers via PATH or fallback to pip's user-scripts path
+        bin_path = shutil.which("skill-seekers")
+        if not bin_path:
+            user_scripts = sysconfig.get_path("scripts", f"{os.name}_user") if hasattr(os, "name") else ""
+            fallback = os.path.join(user_scripts, "skill-seekers.exe" if os.name == "nt" else "skill-seekers")
+            if os.path.exists(fallback):
+                bin_path = fallback
+            else:
+                raise FileNotFoundError()
+
         result = subprocess.run(
-            ["skill-seekers", "create", source, "--output", tmpdir],
+            [bin_path, "create", source, "--output", tmpdir],
             capture_output=True,
             text=True,
             timeout=120,

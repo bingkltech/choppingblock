@@ -59,7 +59,7 @@ def _get_agent():
     """Lazily initialize the JulesDispatchAgent singleton."""
     global _dispatch_agent
     if _dispatch_agent is None:
-        from workforce.tier2_cloud_labor.jules_dispatch_agent import JulesDispatchAgent
+        from workforce.system_agents.jules_dispatch_agent import JulesDispatchAgent
         _dispatch_agent = JulesDispatchAgent()
         logger.info("🔮 JulesDispatchAgent initialized for API routes.")
     return _dispatch_agent

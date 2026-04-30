@@ -22,15 +22,16 @@ from config import OLLAMA_URL, OLLAMA_TIMEOUT, DEFAULT_OLLAMA_MODEL
 logger = logging.getLogger(__name__)
 
 
-def query_ollama(prompt: str, system: str = "", model: str = "", timeout: int = 0) -> Optional[str]:
+def query_ollama(prompt: str, system: str = "", model: str = "", timeout: int = 0, url_override: str = None) -> Optional[str]:
     """
-    Query local Ollama via HTTP API. Returns the model's text response.
+    Query local or cloud Ollama via HTTP API. Returns the model's text response.
     """
     model = model or DEFAULT_OLLAMA_MODEL
     timeout = timeout or OLLAMA_TIMEOUT
+    endpoint = url_override or OLLAMA_URL
     try:
         resp = requests.post(
-            OLLAMA_URL,
+            endpoint,
             json={
                 "model": model,
                 "prompt": prompt,
@@ -47,7 +48,7 @@ def query_ollama(prompt: str, system: str = "", model: str = "", timeout: int = 
         data = resp.json()
         return data.get("response", "")
     except requests.exceptions.ConnectionError:
-        logger.error("BRAIN: Ollama not reachable at %s", OLLAMA_URL)
+        logger.error("BRAIN: Ollama not reachable at %s", endpoint)
         return None
     except requests.exceptions.Timeout:
         logger.error("BRAIN: Ollama timed out after %ds", timeout)
@@ -60,38 +61,64 @@ def query_ollama(prompt: str, system: str = "", model: str = "", timeout: int = 
 def query_gemini(prompt: str, system: str = "", model: str = "gemini-2.5-flash",
                  api_key: str = "", timeout: int = 0) -> Optional[str]:
     """
-    Query Google Gemini via REST API. Returns the model's text response.
+    Query Google Gemini via REST API. Uses the API Vault for key rotation and rate-limit handling.
     """
-    if not api_key:
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-    if not api_key:
-        logger.error("BRAIN: No Gemini API key configured")
-        return None
-
+    from anatomy.api_vault import get_gemini_key, report_gemini_429
+    
     timeout = timeout or OLLAMA_TIMEOUT
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    try:
-        resp = requests.post(
-            url,
-            json={
-                "system_instruction": {"parts": [{"text": system}]},
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
-            },
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    except requests.exceptions.ConnectionError:
-        logger.error("BRAIN: Gemini API unreachable")
-        return None
-    except requests.exceptions.Timeout:
-        logger.error("BRAIN: Gemini API timed out after %ds", timeout)
-        return None
-    except Exception as e:
-        logger.error("BRAIN: Gemini query failed: %s", str(e))
-        return None
+    max_retries = 3
+    retries = 0
+
+    while retries < max_retries:
+        current_key = api_key or get_gemini_key() or os.environ.get("GOOGLE_API_KEY", "")
+        
+        if not current_key:
+            logger.error("BRAIN: No Gemini API key available in Vault or Environment")
+            return None
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
+        try:
+            resp = requests.post(
+                url,
+                json={
+                    "system_instruction": {"parts": [{"text": system}]},
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
+                },
+                timeout=timeout,
+            )
+            
+            if resp.status_code == 429:
+                logger.warning("BRAIN: Hit 429 Rate Limit for Gemini. Reporting to Vault and retrying...")
+                report_gemini_429(current_key)
+                retries += 1
+                api_key = "" # Clear override to force vault next key
+                continue
+                
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            
+        except requests.exceptions.ConnectionError:
+            logger.error("BRAIN: Gemini API unreachable")
+            return None
+        except requests.exceptions.Timeout:
+            logger.error("BRAIN: Gemini API timed out after %ds", timeout)
+            return None
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                report_gemini_429(current_key)
+                retries += 1
+                api_key = ""
+                continue
+            logger.error("BRAIN: Gemini query HTTP error: %s", str(e))
+            return None
+        except Exception as e:
+            logger.error("BRAIN: Gemini query failed: %s", str(e))
+            return None
+            
+    logger.error("BRAIN: Failed to get successful Gemini response after %d retries.", max_retries)
+    return None
 
 
 def query_brain(prompt: str, system: str = "", model: str = "",

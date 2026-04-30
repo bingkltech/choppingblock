@@ -1,0 +1,52 @@
+CRASH AT: 2026-04-14T18:32:52.207216
+============================================================
+INFO:     127.0.0.1:62154 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62250 - "GET /api/agents HTTP/1.1" 200 OK
+2026-04-14 18:23:10,564 [INFO] paperclip.main: 🔍 Extracting skills from: System Overseer
+INFO:     127.0.0.1:62252 - "POST /api/skills/extract HTTP/1.1" 501 Not Implemented
+INFO:     127.0.0.1:62252 - "PUT /api/agents/2 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62252 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62359 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62469 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62589 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62712 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62856 - "GET /api/agents HTTP/1.1" 200 OK
+2026-04-14 18:28:52,330 [INFO] paperclip.main: 🔌 WebSocket client disconnected. Total: 1
+INFO:     connection closed
+INFO:     127.0.0.1:62935 - "WebSocket /ws/heartbeat" [accepted]
+2026-04-14 18:28:52,642 [INFO] paperclip.main: 🔌 WebSocket client connected. Total: 2
+INFO:     connection open
+INFO:     127.0.0.1:62944 - "WebSocket /ws/heartbeat" [accepted]
+2026-04-14 18:28:56,604 [INFO] paperclip.main: 🔌 WebSocket client connected. Total: 3
+INFO:     connection open
+INFO:     127.0.0.1:62991 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63084 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63190 - "GET /api/agents HTTP/1.1" 200 OK
+2026-04-14 18:31:35,129 [INFO] paperclip.main: 🔌 WebSocket client disconnected. Total: 2
+2026-04-14 18:31:35,130 [INFO] paperclip.main: 🔌 WebSocket client disconnected. Total: 1
+2026-04-14 18:31:35,130 [INFO] paperclip.main: 🔌 WebSocket client disconnected. Total: 0
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     127.0.0.1:63234 - "WebSocket /ws/heartbeat" [accepted]
+2026-04-14 18:31:35,695 [INFO] paperclip.main: 🔌 WebSocket client connected. Total: 1
+INFO:     connection open
+INFO:     127.0.0.1:63240 - "GET /api/heal-log HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63242 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63240 - "GET /api/heal-log HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63242 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63242 - "GET /api/heal-log HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63242 - "GET /api/heal-log HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63248 - "WebSocket /ws/heartbeat" [accepted]
+2026-04-14 18:31:38,715 [INFO] paperclip.main: 🔌 WebSocket client connected. Total: 2
+INFO:     connection open
+INFO:     127.0.0.1:63244 - "OPTIONS /api/tools/test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63245 - "POST /api/tools/test HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63245 - "POST /api/tools/test HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63284 - "POST /api/tools/test HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63284 - "OPTIONS /api/skills/extract HTTP/1.1" 200 OK
+2026-04-14 18:32:00,477 [INFO] paperclip.main: 🔍 Extracting skills from: System Overseer
+INFO:     127.0.0.1:63286 - "POST /api/skills/extract HTTP/1.1" 501 Not Implemented
+INFO:     127.0.0.1:63316 - "OPTIONS /api/models/test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63316 - "POST /api/models/test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63363 - "GET /api/agents HTTP/1.1" 200 OK

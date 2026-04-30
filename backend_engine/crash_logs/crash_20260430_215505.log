@@ -1,0 +1,27 @@
+CRASH AT: 2026-04-30T21:55:05.457526
+============================================================
+2026-04-30 21:55:03,609 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:55:03,609 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+2026-04-30 21:55:03,775 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-30 21:55:03,775 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+INFO:     Started server process [28084]
+INFO:     Waiting for application startup.
+2026-04-30 21:55:03,799 [INFO] paperclip.main: 📎 Paperclip Reborn — Backend Engine starting up...
+2026-04-30 21:55:03,801 [INFO] database.db_manager: 📦 Ledger database initialized at F:\012A_Github\choppingblock\backend_engine\database\data\ledger.db
+2026-04-30 21:55:03,808 [INFO] database.db_manager: 🌱 Seeded 5 Jules cloud accounts.
+2026-04-30 21:55:03,813 [INFO] database.db_manager: 🤖 Seeded default agents.
+2026-04-30 21:55:05,138 [INFO] paperclip.main: ✅ Backend ready. WebSocket at /ws/heartbeat
+2026-04-30 21:55:05,143 [INFO] paperclip.mcp_services: 🚀 Launching Native MCP Server (Skill Seekers) on port 8765...
+2026-04-30 21:55:05,159 [INFO] paperclip.main: 🎯 Orchestrator background loop started
+2026-04-30 21:55:05,159 [INFO] anatomy.orchestrator: 🎯 Orchestrator started (polling every 5s)
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+2026-04-30 21:55:05,162 [INFO] anatomy.orchestrator: 🎯 Orchestrator stopped
+2026-04-30 21:55:05,162 [INFO] paperclip.mcp_services: 🛑 Shutting down Native MCP Server...
+2026-04-30 21:55:05,307 [INFO] paperclip.mcp_services: [MCP] ❌ Error: mcp package not installed
+2026-04-30 21:55:05,307 [INFO] paperclip.mcp_services: [MCP] Install with: pip install mcp
+2026-04-30 21:55:05,307 [INFO] paperclip.mcp_services: [MCP] Import error: No module named 'mcp'
+2026-04-30 21:55:05,332 [WARNING] paperclip.mcp_services: ⚠️ MCP Server terminated with code 1
+2026-04-30 21:55:05,332 [INFO] paperclip.main: 🛑 Paperclip Reborn — Backend Engine shutting down.
+INFO:     Application shutdown complete.

@@ -8,6 +8,7 @@ import AlertsPanel from './components/AlertsPanel';
 import ActivityFeed from './components/ActivityFeed';
 import FleetUtilization from './components/FleetUtilization';
 import AgentManager from './components/AgentManager';
+import ApiVault from './components/ApiVault';
 import Settings from './components/Settings';
 import { useState } from 'react';
 
@@ -44,6 +45,10 @@ export default function App() {
         </div>
       ) : activeView === 'Settings' ? (
         <Settings />
+      ) : activeView === 'Vault' ? (
+        <div style={{ gridArea: 'main', overflowY: 'auto', width: '100%', height: '100%' }}>
+          <ApiVault />
+        </div>
       ) : (
         <main className="main-content">
           <ProjectCards projects={projects} />

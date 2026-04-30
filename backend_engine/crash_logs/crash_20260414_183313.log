@@ -1,0 +1,21 @@
+CRASH AT: 2026-04-14T18:33:13.647803
+============================================================
+2026-04-14 18:33:12,590 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-14 18:33:12,590 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+2026-04-14 18:33:12,743 [INFO] anatomy.shift_manager: 🔀 Shift Manager initialized in BOSS mode.
+2026-04-14 18:33:12,743 [INFO] anatomy.orchestrator: 🎯 Orchestrator initialized
+INFO:     Started server process [25868]
+INFO:     Waiting for application startup.
+2026-04-14 18:33:12,764 [INFO] paperclip.main: 📎 Paperclip Reborn — Backend Engine starting up...
+2026-04-14 18:33:12,768 [INFO] database.db_manager: 📦 Ledger database initialized at F:\012A_Github\choppingblock\backend_engine\database\ledger.db
+2026-04-14 18:33:12,775 [INFO] database.db_manager: 🌱 Seeded 5 Jules cloud accounts.
+2026-04-14 18:33:12,783 [INFO] database.db_manager: 🤖 Seeded default agents.
+2026-04-14 18:33:13,545 [INFO] paperclip.main: ✅ Backend ready. WebSocket at /ws/heartbeat
+2026-04-14 18:33:13,546 [INFO] paperclip.main: 🎯 Orchestrator background loop started
+2026-04-14 18:33:13,546 [INFO] anatomy.orchestrator: 🎯 Orchestrator started (polling every 5s)
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+2026-04-14 18:33:13,549 [INFO] anatomy.orchestrator: 🎯 Orchestrator stopped
+2026-04-14 18:33:13,549 [INFO] paperclip.main: 🛑 Paperclip Reborn — Backend Engine shutting down.
+INFO:     Application shutdown complete.

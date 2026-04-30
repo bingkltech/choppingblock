@@ -11,6 +11,7 @@ export default function Sidebar({ activeView, setActiveView }) {
     { icon: '📋', label: 'Tasks' },
     { icon: '🎯', label: 'Targets' },
     { icon: '🔗', label: 'Connections' },
+    { icon: '🔐', label: 'Vault' },
     { icon: '⚙️', label: 'Settings' },
   ];
 

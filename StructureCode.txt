@@ -1,6 +1,6 @@
-paperclip-reborn/
+choppingblock/
 │
-├── README.md                         # The Master Documentation (The First Soul)
+├── README.md                         # The Master Documentation
 ├── .env                              # API Keys & Config (Never tracked in Git)
 │
 ├── god_process.py                    # 👑 THE WATCHDOG: Wraps the backend. Catches crashes, auto-heals framework.
@@ -10,12 +10,12 @@ paperclip-reborn/
 │   ├── main.py                       # FastAPI & WebSocket server
 │   │
 │   ├── database/
-│   │   ├── ledger.db                 # SQLite: Tracks 5x Jules API limits, token burn, active PRs
+│   │   ├── ledger.db                 # SQLite: Tracks API limits, agent profiles
 │   │   └── db_manager.py             # SQLite helper functions
 │   │
 │   ├── anatomy/                      # 🧬 THE AGENT DNA
 │   │   ├── agent_core.py             # Class: Soul (Prompt), Brain (Model), Hands (Tools), Heartbeat (WebSockets)
-│   │   └── shift_manager.py          # Toggles routing between Boss Mode (Manual) and God Mode (Auto)
+│   │   └── orchestrator.py           # Assigns tasks to idle agents based on mapped types
 │   │
 │   ├── caveman_tools/                # 🪨 THE PRIMITIVES
 │   │   ├── primitive_bash.py         # Sandboxed terminal execution (`subprocess.run`)
@@ -23,17 +23,18 @@ paperclip-reborn/
 │   │   ├── primitive_docker.py       # `docker` CLI wrapper (Spins up containers for testing)
 │   │   └── primitive_ollama.py       # `ollama` CLI wrapper
 │   │
-│   ├── workforce/                    # 🏢 THE TRI-TIERED ROSTER
-│   │   ├── tier1_executives/         # Premium Models (Huge Context)
-│   │   │   ├── ceo_agent.py          # Writes ARCHITECTURE.md
-│   │   │   └── god_agent.py          # Edits framework code, writes RULES.md
+│   ├── workforce/                    # 🏢 THE AGENCY DEPARTMENTS
+│   │   ├── executives/               # Premium Models (Huge Context)
+│   │   │   ├── ceo_agent.py          # Plans architecture
+│   │   │   └── god_agent.py          # Edits framework code, self-heals
 │   │   │
-│   │   ├── tier2_cloud_labor/        # Free Cloud Models
-│   │   │   └── jules_router.py       # Load balances tasks across the 5x API accounts
+│   │   ├── system_agents/            # Static System Ops Agents
+│   │   │   ├── jules_dispatch_agent.py
+│   │   │   ├── qa_agent.py
+│   │   │   └── ops_agent.py
 │   │   │
-│   │   └── tier3_local_swarm/        # Local Ollama Models (Zero Cost)
-│   │       ├── qa_agent.py           # Runs Docker tests, sends terminal logs back to Jules
-│   │       └── ops_agent.py          # Merges PRs, cleans branches
+│   │   └── agency/                   # Dynamic Agency Loading
+│   │       └── agency_worker.py      # Base wrapper for 184 dynamic agency agents
 │   │
 │   └── shared_workspace/             # 🧠 THE SHARED BRAIN (Stigmergy - Target Repo)
 │       ├── ARCHITECTURE.md           # The CEO's master plan
@@ -44,8 +45,8 @@ paperclip-reborn/
     ├── src/
     │   ├── App.jsx                   # Main React layout
     │   ├── components/
-    │   │   ├── OfficeMap.jsx         # 2D isometric render of the desks, avatars, and flying tasks
-    │   │   ├── AgentDossier.jsx      # Sidebar: Hot-swap Brains, equip Tools, view Terminal
-    │   │   └── ShiftToggle.jsx       # "Day Shift" (Boss Mode) vs "Night Shift" (God Mode) toggle
+    │   │   ├── AgentManager.jsx      # Dynamic view for 184 agents with Department Filter
+    │   │   ├── TaskQueue.jsx         # Live execution queue
+    │   │   └── TopNavbar.jsx         # Global controls
     │   └── hooks/
     │       └── useHeartbeat.js       # Listens to backend WebSocket for live UI updates
