@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import requests
 import sys
 from datetime import datetime
 from typing import Optional
@@ -837,13 +838,12 @@ async def api_generate_skills(body: SkillGenerateBody):
 @app.post("/api/skills/extract")
 async def api_extract_skills(body: SkillExtractBody):
     """
-    Runs skill-seekers against a GitHub repo or URL and returns
-    structured skill text suitable for populating an agent's Skills field.
+    Self-contained skill extractor. Reads a GitHub repo's metadata
+    (languages, topics, package files, README) via the GitHub API and
+    returns a structured skill string — no external CLI needed.
     """
-    import subprocess
-    import shutil
-    import tempfile
     import re
+    import base64
 
     source = body.source.strip()
     if not source:
@@ -851,89 +851,147 @@ async def api_extract_skills(body: SkillExtractBody):
 
     logger.info("🔍 Extracting skills from: %s", source)
 
-    # Create a temp output directory
-    tmpdir = tempfile.mkdtemp(prefix="skill_extract_")
+    # Normalise: accept "owner/repo", "https://github.com/owner/repo", etc.
+    repo_slug = source
+    gh_match = re.match(r'(?:https?://)?(?:www\.)?github\.com/([^/]+/[^/]+)(?:/.*)?$', source)
+    if gh_match:
+        repo_slug = gh_match.group(1)
+
+    # Strip trailing .git
+    repo_slug = repo_slug.rstrip('/').removesuffix('.git')
+
+    if '/' not in repo_slug:
+        raise HTTPException(status_code=400, detail="Provide a GitHub repo as 'owner/repo' or a full URL.")
+
+    # Optional: use a GitHub PAT from .env for higher rate limits
+    gh_headers = {"Accept": "application/vnd.github.v3+json"}
+    gh_pat = os.getenv("GITHUB_PAT") or os.getenv("GITHUB_TOKEN")
+    if gh_pat:
+        gh_headers["Authorization"] = f"Bearer {gh_pat}"
+
+    skills = set()
+    repo_description = ""
 
     try:
-        import sysconfig
-        # Try to find skill-seekers via PATH or fallback to pip's user-scripts path
-        bin_path = shutil.which("skill-seekers")
-        if not bin_path:
-            user_scripts = sysconfig.get_path("scripts", f"{os.name}_user") if hasattr(os, "name") else ""
-            fallback = os.path.join(user_scripts, "skill-seekers.exe" if os.name == "nt" else "skill-seekers")
-            if os.path.exists(fallback):
-                bin_path = fallback
-            else:
-                raise FileNotFoundError()
+        # ── 1. Repo metadata (description + topics) ──
+        repo_resp = requests.get(f"https://api.github.com/repos/{repo_slug}", headers=gh_headers, timeout=15)
+        if repo_resp.status_code != 200:
+            raise HTTPException(status_code=422, detail=f"GitHub API returned {repo_resp.status_code} for '{repo_slug}'. Is the repo public?")
 
-        result = subprocess.run(
-            [bin_path, "create", source, "--output", tmpdir],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
+        repo_data = repo_resp.json()
+        repo_description = repo_data.get("description", "") or ""
 
-        # skill-seekers writes a SKILL.md inside the output dir
-        skill_file = None
-        for root, dirs, files in os.walk(tmpdir):
-            for fname in files:
-                if fname.upper() == "SKILL.md" or fname.lower() == "skill.md":
-                    skill_file = os.path.join(root, fname)
-                    break
+        # Topics are useful skill keywords
+        for topic in repo_data.get("topics", []):
+            skills.add(topic.replace("-", " ").title())
 
-        if skill_file and os.path.exists(skill_file):
-            with open(skill_file, "r", encoding="utf-8", errors="ignore") as f:
-                raw = f.read()
+        # ── 2. Languages used ──
+        lang_resp = requests.get(f"https://api.github.com/repos/{repo_slug}/languages", headers=gh_headers, timeout=10)
+        if lang_resp.status_code == 200:
+            langs = lang_resp.json()
+            for lang in langs:
+                skills.add(lang)
 
-            # Extract the most useful sections: description + key skills
-            # Strip markdown headers and collapse whitespace
-            lines = [ln.strip() for ln in raw.splitlines()]
-            skill_lines = []
-            in_skills = False
-            for ln in lines:
-                if not ln:
-                    continue
-                # Grab lines that look like skill bullets or descriptions
-                if ln.startswith("##") or ln.startswith("###"):
-                    in_skills = True
-                    continue
-                if in_skills and (ln.startswith("-") or ln.startswith("*") or ln.startswith("•")):
-                    clean = re.sub(r'^[-*•]\s*', '', ln).strip()
-                    if clean:
-                        skill_lines.append(clean)
-                elif in_skills and len(ln) > 20 and not ln.startswith("#"):
-                    skill_lines.append(ln)
+        # ── 3. Parse package.json (for JS/TS repos) ──
+        pkg_resp = requests.get(f"https://api.github.com/repos/{repo_slug}/contents/package.json", headers=gh_headers, timeout=10)
+        if pkg_resp.status_code == 200:
+            try:
+                content = base64.b64decode(pkg_resp.json().get("content", "")).decode("utf-8", errors="ignore")
+                pkg = json.loads(content)
+                # Pull key deps as skills
+                all_deps = {}
+                all_deps.update(pkg.get("dependencies", {}))
+                all_deps.update(pkg.get("devDependencies", {}))
+                # Map common deps to human-friendly skill names
+                dep_skill_map = {
+                    "react": "React", "next": "Next.js", "vue": "Vue.js", "angular": "Angular",
+                    "express": "Express.js", "fastify": "Fastify", "koa": "Koa",
+                    "tailwindcss": "Tailwind CSS", "typescript": "TypeScript",
+                    "prisma": "Prisma ORM", "sequelize": "Sequelize",
+                    "jest": "Jest Testing", "vitest": "Vitest", "mocha": "Mocha",
+                    "webpack": "Webpack", "vite": "Vite", "esbuild": "esbuild",
+                    "docker": "Docker", "graphql": "GraphQL", "apollo": "Apollo GraphQL",
+                    "socket.io": "WebSockets", "redis": "Redis",
+                    "mongoose": "MongoDB/Mongoose", "pg": "PostgreSQL",
+                    "electron": "Electron", "three": "Three.js / 3D",
+                    "framer-motion": "Framer Motion Animations",
+                    "d3": "D3.js Data Visualization",
+                }
+                for dep_name in all_deps:
+                    base = dep_name.split("/")[-1].lower()  # handle @scope/name
+                    if base in dep_skill_map:
+                        skills.add(dep_skill_map[base])
+                    elif dep_name.startswith("@") and len(dep_name) > 3:
+                        skills.add(dep_name.split("/")[0].lstrip("@").title() + " Ecosystem")
+            except Exception:
+                pass
 
-            # Fallback: grab first 2000 chars of the raw markdown
-            if not skill_lines:
-                skill_text = raw[:2000].strip()
-            else:
-                skill_text = ", ".join(skill_lines[:30])
+        # ── 4. Parse requirements.txt (for Python repos) ──
+        req_resp = requests.get(f"https://api.github.com/repos/{repo_slug}/contents/requirements.txt", headers=gh_headers, timeout=10)
+        if req_resp.status_code == 200:
+            try:
+                content = base64.b64decode(req_resp.json().get("content", "")).decode("utf-8", errors="ignore")
+                py_skill_map = {
+                    "fastapi": "FastAPI", "flask": "Flask", "django": "Django",
+                    "sqlalchemy": "SQLAlchemy", "celery": "Celery",
+                    "pytest": "Pytest", "numpy": "NumPy", "pandas": "Pandas",
+                    "tensorflow": "TensorFlow", "torch": "PyTorch",
+                    "scikit-learn": "Scikit-learn ML", "transformers": "HuggingFace Transformers",
+                    "openai": "OpenAI API", "langchain": "LangChain",
+                    "requests": "HTTP/REST APIs", "beautifulsoup4": "Web Scraping",
+                    "scrapy": "Scrapy Web Crawling", "docker": "Docker",
+                    "redis": "Redis", "psycopg2": "PostgreSQL",
+                    "boto3": "AWS SDK", "pydantic": "Pydantic Data Validation",
+                    "uvicorn": "ASGI Server", "aiohttp": "Async HTTP",
+                }
+                for line in content.splitlines():
+                    pkg_name = re.split(r'[>=<!\[\];#]', line.strip())[0].strip().lower()
+                    if pkg_name in py_skill_map:
+                        skills.add(py_skill_map[pkg_name])
+            except Exception:
+                pass
 
-            log_activity("system", "SKILL_EXTRACT", f"Skills extracted from {source}")
-            return {
-                "ok": True,
-                "source": source,
-                "skills": skill_text,
-                "raw_length": len(raw),
-            }
+        # ── 5. Quick README scan for additional keywords ──
+        readme_resp = requests.get(f"https://api.github.com/repos/{repo_slug}/readme", headers=gh_headers, timeout=10)
+        if readme_resp.status_code == 200:
+            try:
+                readme_content = base64.b64decode(readme_resp.json().get("content", "")).decode("utf-8", errors="ignore")[:5000].lower()
+                readme_keywords = {
+                    "rest api": "REST API Design", "graphql": "GraphQL",
+                    "websocket": "WebSockets", "ci/cd": "CI/CD Pipelines",
+                    "docker": "Docker", "kubernetes": "Kubernetes",
+                    "machine learning": "Machine Learning", "deep learning": "Deep Learning",
+                    "microservice": "Microservices Architecture",
+                    "authentication": "Authentication & Auth",
+                    "oauth": "OAuth Integration",
+                    "real-time": "Real-Time Systems",
+                    "serverless": "Serverless Architecture",
+                    "testing": "Automated Testing",
+                    "performance": "Performance Optimization",
+                }
+                for keyword, skill_name in readme_keywords.items():
+                    if keyword in readme_content:
+                        skills.add(skill_name)
+            except Exception:
+                pass
 
-        else:
-            # Return stderr for debugging
-            logger.warning("skill-seekers stdout: %s", result.stdout[:500])
-            logger.warning("skill-seekers stderr: %s", result.stderr[:500])
-            raise HTTPException(
-                status_code=422,
-                detail=f"skill-seekers ran but produced no SKILL.md. stderr: {result.stderr[:300]}"
-            )
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"GitHub API request failed: {str(e)}")
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=408, detail="skill-seekers timed out (120s). Try a smaller repo.")
-    except FileNotFoundError:
-        raise HTTPException(status_code=501, detail="skill-seekers CLI not found. Run: pip install skill-seekers")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # Build final skill string
+    if not skills:
+        raise HTTPException(status_code=422, detail=f"Could not extract skills from '{repo_slug}'. Is the repo public and non-empty?")
+
+    skill_text = ", ".join(sorted(skills))
+
+    log_activity("system", "SKILL_EXTRACT", f"Skills extracted from {source}: {len(skills)} capabilities found")
+    return {
+        "ok": True,
+        "source": repo_slug,
+        "skills": skill_text,
+        "description": repo_description,
+        "count": len(skills),
+    }
 
 
 # ==========================================
