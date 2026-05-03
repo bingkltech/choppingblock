@@ -12,6 +12,9 @@ import ApiVault from './components/ApiVault';
 import Settings from './components/Settings';
 import { useState } from 'react';
 
+import SystemResourceMonitor from './components/SystemResourceMonitor';
+import HermesWidget from './components/HermesWidget';
+
 /**
  * App — Main dashboard layout assembling all panels.
  * Matches the zZERO command-center design from dashboard.png.
@@ -34,6 +37,22 @@ export default function App() {
     sendCommand('toggle_shift');
   };
 
+  const isWidgetOnly = new URLSearchParams(window.location.search).get('view') === 'widget';
+
+  if (isWidgetOnly) {
+    return (
+      <div className="widget-only-mode" style={{ background: 'transparent' }}>
+        <HermesWidget 
+          fleetStats={fleetStats} 
+          shift={shift} 
+          onToggleShift={handleToggleShift} 
+          isGlobal={true}
+        />
+      </div>
+    );
+  }
+
+
   return (
     <div className="app-layout">
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
@@ -53,7 +72,10 @@ export default function App() {
         <main className="main-content">
           <ProjectCards projects={projects} />
           <AlertsPanel alerts={alerts} />
-          <AgentFleetStatus fleetStats={fleetStats} agents={agents} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <AgentFleetStatus fleetStats={fleetStats} agents={agents} />
+            <SystemResourceMonitor />
+          </div>
           <LivePipeline projects={projects} />
           <ActivityFeed activity={activity} />
           <FleetUtilization fleetStats={fleetStats} />
@@ -86,6 +108,13 @@ export default function App() {
         }} />
         {connected ? 'Connected' : 'Reconnecting...'}
       </div>
+
+      <HermesWidget 
+        fleetStats={fleetStats} 
+        shift={shift} 
+        onToggleShift={handleToggleShift} 
+        isGlobal={isWidgetOnly}
+      />
     </div>
   );
 }
